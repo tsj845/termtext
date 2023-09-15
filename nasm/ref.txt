@@ -1,0 +1,65 @@
+https://opensource.apple.com/source/xnu/xnu-1504.3.12/bsd/kern/syscalls.master
+https://cs.lmu.edu/~ray/notes/nasmtutorial/
+https://www.nasm.us/doc/
+https://linuxhint.com/using_mmap_function_linux/
+
+MMAP:
+the given address is a preferred address. If NULL, kernel does what it wants and gives you something wherever
+use MAP_ANON to avoid needing to map to a file
+
+mem allocation invocation: pointer = mmap(NULL, bytecout, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0)
+
+Calling Conventions:
+From left to right, pass as many parameters as will fit in registers. The order in which registers are allocated, are:
+For integers and pointers:
+
+rdi, rsi, rdx, rcx, r8, r9.
+
+For floating-point (float, double), xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6, xmm7.
+Additional parameters are pushed on the stack, right to left, and are to be removed by the caller after the call.
+After the parameters are pushed, the call instruction is made, so when the called function gets control, the return address is at [rsp], the first memory parameter is at [rsp+8], etc.
+The stack pointer rsp must be aligned to a 16-byte boundary before making a call. Fine, but the process of making a call pushes the return address (8 bytes) on the stack, so when a function gets control, rsp is not aligned. You have to make that extra space yourself, by pushing something or subtracting 8 from rsp.
+
+The only registers that the called function is required to preserve (the calle-save registers) are: 
+
+rbp, rbx, r12, r13, r14, r15. All others are free to be changed by the called function.
+
+The callee is also supposed to save the control bits of the XMCSR and the x87 control word, but x87 instructions are rare in 64-bit code so you probably don’t have to worry about this.
+Integers are returned in rax or rdx:rax, and floating point values are returned in xmm0 or xmm1:xmm0.
+
+QUICK REF:
+
+integer registers are "r" + [0 - 15] - all are 64 bit
+registers can have suffixes to change how they are treated:
+NO SUFFIX - all 64 bits
+- D - lower 32 bits
+- W - lower 16 bits
+- B - lower 8 bits
+ALIASES:
+R0 - RAX (64 bit), EAX (32 bit), AX (16 bit), AL (low 8 bits), AH (high 8 bits)
+R1 - RCX (64 bit), ECX (32 bit), CX (16 bit), CL (low 8 bits), CH (high 8 bits)
+R2 - RDX (64 bit), EDX (32 bit), DX (16 bit), DL (low 8 bits), DH (high 8 bits)
+R3 - RBX (64 bit), EBX (32 bit), BX (16 bit), BL (low 8 bits), BH (high 8 bits)
+R4 - RSP (64 bit), ESP (32 bit), SP (16 bit), SPL (low 8 bits)
+R5 - RBP (64 bit), EBP (32 bit), BP (16 bit), BPL (low 8 bits)
+R6 - RSI (64 bit), ESI (32 bit), SI (16 bit), SIL (low 8 bits)
+R7 - RDI (64 bit), EDI (32 bit), DI (16 bit), DIL (low 8 bits)
+
+XMM registers: "xmm" + [0 - 15] - all are 128 bit
+
+basic memory addressing:
+[ number ]
+[ reg ]
+[ reg + reg*scale ] - scale may only be 1, 2, 4, or 8
+[ reg + number ]
+[ reg + reg*scale + number ]
+the NUMBER is DISPLACEMENT
+the plain REG is BASE
+the SCALED reg is INDEX
+
+most basic instructions have following forms:
+add reg, reg
+add reg, mem
+add reg, imm
+add mem, reg
+add mem, imm
