@@ -18,8 +18,8 @@ section .text
 _string:
 
 .new: ; creates space for a new string, pointer to memory is passed through rdi, this memory should be 8 bytes and will contain the string's allocated length, rsi should contain the desired length of the string
-    cmp rsi, 0 ; see if length given is zero
-    jne .new.yeslen
+    cmp rsi, 1 ; see if length given is zero
+    jg .new.yeslen
     mov rsi, 2
     .new.yeslen:
     mov [rdi], rsi
@@ -53,19 +53,19 @@ _main:
 
     mov rdi, strlen
 
-    call _string.new
+    mov rsi, 1
 
-    call debprnt
+    call _string.new
 
     cmp rax, 0
     je err
 
     mov cl, 0x61
-    ; mov [rax], cl
+    mov [rax], cl
     mov rbx, rax
 
     mov rdi, rax
-    ; call prints
+    call prints
 
     mov rdi, rbx
 
