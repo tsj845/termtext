@@ -6,27 +6,28 @@ extern _putchar
 extern _getchar
 ; extern _free
 
-; extern _string.new
+extern _string.new
+extern _string.drop
 
 ; section .text
 
-extern _calloc
-extern _free
+; extern _calloc
+; extern _free
 
 section .text
 
-_string:
+; _string:
 
-.new: ; creates space for a new string, pointer to memory is passed through rdi, this memory should be 8 bytes and will contain the string's allocated length, rsi should contain the desired length of the string
-    cmp rsi, 1 ; see if length given is zero
-    jg .new.yeslen
-    mov rsi, 2
-    .new.yeslen:
-    mov [rdi], rsi
-    mov rdi, rsi
-    mov rsi, 1
-    call _calloc
-    ret
+; .new: ; creates space for a new string, pointer to memory is passed through rdi, this memory should be 8 bytes and will contain the string's allocated length, rsi should contain the desired length of the string
+;     cmp rsi, 1 ; see if length given is zero
+;     jg .new.yeslen
+;     mov rsi, 2
+;     .new.yeslen:
+;     mov [rdi], rsi
+;     mov rdi, rsi
+;     mov rsi, 1
+;     call _calloc
+;     ret
 
 ; calls _puts then prints a carriage return
 prints:
@@ -51,14 +52,17 @@ printnewline:
 _main:
     push rbx
 
-    mov rdi, strlen
+    mov rdi, strprops
 
-    mov rsi, 1
+    mov rsi, 2
 
     call _string.new
 
     cmp rax, 0
-    je err
+    jnz err
+
+    mov rdx, strprops
+    mov rax, [rdx+16]
 
     mov cl, 0x61
     mov [rax], cl
@@ -68,8 +72,9 @@ _main:
     call prints
 
     mov rdi, rbx
+    mov rsi, strprops
 
-    call _free
+    call _string.drop
 
     ; counter, using rbx because rbx is required to be preserved through calls
     mov rbx, 0
@@ -107,5 +112,8 @@ err:
 section .data
 
 message: db 0,0,0,0
-strlen: db 0,0,0,0,0,0,0,0
+strprops:
+    .cap: db 0,0,0,0,0,0,0,0
+    .len: db 0,0,0,0,0,0,0,0
+    .ptr: db 0,0,0,0,0,0,0,0
 debmsg: db "DBMSG",0
