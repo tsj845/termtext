@@ -6,6 +6,12 @@ extern _putchar
 extern _getchar
 ; extern _free
 
+extern _printnum
+
+extern _io_init
+extern __writechar
+common _stdout 8
+
 extern _string.new
 extern _string.drop
 
@@ -33,7 +39,8 @@ section .text
 prints:
     call _puts
     mov rdi, 13
-    call _putchar
+    mov rsi, _stdout
+    call __writechar
     ret
 
 debprnt:
@@ -51,6 +58,25 @@ printnewline:
 
 _main:
     push rbx
+
+    mov rdi, 15
+    call _printnum
+
+    call _io_init
+
+    cmp rax, 10
+
+    jne .initgood
+    pop rbx
+    ret
+    .initgood:
+
+    mov rdi, 0x61
+    mov rsi, _stdout
+
+    call __writechar
+
+    call debprnt
 
     mov rdi, strprops
 
