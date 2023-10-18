@@ -19,6 +19,7 @@ extern _puts
 ; extern _get_errno
 ; extern _EBADF
 extern ___error
+extern _printnum
 
 ; constants
 ; extern _IOFBF
@@ -45,7 +46,8 @@ global __writechar
 section .text
 
 _get_errno:
-    mov rax, [qword _errno_ptr]
+    mov rcx, [qword _errno_ptr]
+    mov rax, [qword rcx]
     ; mov rax, [rax]
     ret
 
@@ -80,6 +82,8 @@ _io_init:
     mov rdi, ebadfmsg
     call _puts
     .encf:
+    mov rdi, rax
+    call _printnum
     mov rdi, badfdopen
     call _puts
     mov rax, 10
