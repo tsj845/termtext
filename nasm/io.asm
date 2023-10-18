@@ -46,8 +46,9 @@ global __writechar
 section .text
 
 _get_errno:
-    mov rcx, [qword _errno_ptr]
-    mov rax, [qword rcx]
+    mov rcx, _errno_ptr
+    mov rcx, [rcx]
+    mov eax, [rcx]
     ; mov rax, [rax]
     ret
 
