@@ -11,12 +11,13 @@ fi
 gcc *.o -o $1 -Wl,-no_pie
 # exit 0
 
-echo "BUILT, RUNNING:"
 
 if [ $? != 0 ]
 then
 exit 1
 fi
+
+echo "BUILT, RUNNING:"
 
 ____TTY_SETTINGS____=$(stty -g)
 

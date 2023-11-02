@@ -1,0 +1,1 @@
+/Users/tschartman/Documents/GitHub/termtext/rust/target/debug/rust: /Users/tschartman/Documents/GitHub/termtext/rust/src/doc.rs /Users/tschartman/Documents/GitHub/termtext/rust/src/lib.rs /Users/tschartman/Documents/GitHub/termtext/rust/src/line.rs /Users/tschartman/Documents/GitHub/termtext/rust/src/main.rs

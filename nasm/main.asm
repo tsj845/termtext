@@ -1,10 +1,12 @@
 bits 64
 
 global _main
-extern _puts
-extern _putchar
-extern _getchar
+; extern _puts
+; extern _putchar
+; extern _getchar
 ; extern _free
+
+extern __exit
 
 extern _printnum
 
@@ -61,6 +63,9 @@ _main:
 
     mov rdi, 15
     call _printnum
+
+    mov rdi, 0
+    call __exit
 
     call _io_init
 
