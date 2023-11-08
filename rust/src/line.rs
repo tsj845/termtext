@@ -1,7 +1,7 @@
 //! deals with manipulating lines
 
 use std::alloc::{Layout, alloc, dealloc};
-use std::ptr::{read, write, copy_nonoverlapping};
+use std::ptr::{read, write, copy_nonoverlapping, copy};
 
 /// represents a line of text with built in linked list functionality
 pub struct Line {
@@ -74,63 +74,149 @@ impl Line {
     /// set the prevln property
     pub fn set_prev(&self, n: u64) {Line::set_prev_a(self.get_addr(), n)}
 
-    fn resize(laddr: u64, n: u64) {
+    fn resize(laddr: u64, mut n: u64) -> u64 {
+        n = match n % 2 == 0 {true=>n,_=>(n+1)}; // ensure `n` has 2-byte alignment
         let il: u64 = Line::len_a(laddr);
         let ic: u64 = Line::cap_a(laddr);
-        if n < il {
+        if n < il { // ensure data is not lost
             panic!("CANNOT REDUCE SIZE TO BELOW LENGTH");
+        }
+        if n == ic { // ignore changes where capacity is the same
+            return Line::get_ptr_a(laddr);
         }
         let np: *mut u8 = Line::alloc(n, 2);
         let op: *mut u8 = Line::get_ptr_a(laddr) as *mut u8;
-        unsafe {
-            copy_nonoverlapping(op, np, il as usize);
+        if op as u64 == 0 { // if resizing from null pointer
+            Line::set_cap_a(laddr, n); // update capacity
+            Line::set_ptr_a(laddr, np as u64); // update ptr property
+            return np as u64;
         }
-        Line::set_cap_a(laddr, n);
-        Line::dealloc(op, ic, 2);
-        Line::set_ptr_a(laddr, np as u64);
+        unsafe {
+            copy_nonoverlapping(op, np, il as usize); // move the data
+        }
+        Line::set_cap_a(laddr, n); // update capacity
+        Line::dealloc(op, ic, 2); // deallocate old memory
+        Line::set_ptr_a(laddr, np as u64); // update ptr property
+        return np as u64;
     }
 }
 
 // str manipulation
 impl Line {
+    /// creates a [String] from this `Line`
+    /// 
+    /// NOTE THAT CHANGES TO THE RETURNED `String` WILL NOT BE RELFLECTED IN THE `Line`
     pub fn to_string_a(laddr: u64) -> String {
         unsafe {
-            let ptr: *mut u8 = read((laddr + 16) as *const *mut u8) as *mut u8;
-            let cap: usize = read((laddr + 24) as *const usize);
-            let len: usize = read((laddr + 32) as *const usize);
+            let ptr: *const u8 = Line::get_ptr_a(laddr) as *const u8; // get the pointer
+            // let cap: usize = Line::cap_a(laddr) as usize; // get size
+            let len: usize = Line::len_a(laddr) as usize; // get length
             if len == 0 {return String::new();} // guard
-            String::from_iter(std::slice::from_raw_parts::<u8>(ptr as *const u8, cap).into_iter().map(|n:&u8| (*n) as char))
+            String::from_iter(std::slice::from_raw_parts::<u8>(ptr, len).into_iter().map(|n:&u8| (*n) as char))
         }
     }
+    /// get an arbitrary index
     pub fn get_char_a(laddr: u64, idx: u64) -> u8 {
         unsafe {
             if Line::len_a(laddr) <= idx {return 0;}
             return read((Line::get_ptr_a(laddr) + idx) as *const u8);
         }
     }
+    /// set an arbitrary index
     pub fn set_char_a(laddr: u64, idx: u64, c: u8) {
         unsafe {
             if Line::len_a(laddr) <= idx {return;}
             write((Line::get_ptr_a(laddr) + idx) as *mut u8, c);
         }
     }
+    /// pushes a character to the end
     pub fn push_char_a(laddr: u64, c: u8) {
         unsafe {
-            if Line::get_ptr_a(laddr) == 0 {Line::set_ptr_a(laddr, Line::alloc(2, 2) as u64);Line::set_cap_a(laddr, 2);}
+            let mut ptr: u64 = Line::get_ptr_a(laddr);
+            if ptr == 0 {Line::resize(laddr, 1);}
             let ic = Line::cap_a(laddr);
             let il = Line::len_a(laddr);
             if ic == il {
-                Line::resize(laddr, ic * 2);
+                ptr = Line::resize(laddr, ic * 2);
             }
-            let ptr: u64 = Line::get_ptr_a(laddr);
             write((ptr + il as u64) as *mut u8, c);
             Line::set_len_a(laddr, il+1);
+        }
+    }
+    /// pops the last character and returns it
+    pub fn pop_char_a(laddr: u64) -> u8 {
+        unsafe {
+            let ptr = Line::get_ptr_a(laddr); // get pointer
+            if ptr == 0 {return 0;} // ensure pointer is not null
+            let ic = Line::cap_a(laddr); // capacity and length
+            let il = Line::len_a(laddr);
+            let c: u8 = read((ptr + il - 1) as *const u8); // read the character
+            Line::set_len_a(laddr, il - 1); // update length
+            if (il - 1) < (ic / 4) { // if length is now under 1/4 of capacity, resize
+                Line::resize(laddr, ic / 2);
+            }
+            return c;
+        }
+    }
+    pub fn insert_char_a(laddr: u64, idx: u64, c: u8) {
+        let il: u64 = Line::len_a(laddr);
+        if idx > il {return;}
+        let ic: u64 = Line::cap_a(laddr);
+        let mut ptr: u64 = Line::get_ptr_a(laddr);
+        Line::set_len_a(laddr, il + 1);
+        unsafe {
+            if ptr == 0 {ptr = Line::resize(laddr, 2);write(ptr as *mut u8, c);return;}
+            if  ic == il { // more efficient to resize using code here than to do extra memcopy's
+                let np: u64 = Line::alloc(ic * 2, 2) as u64;
+                if idx != 0 {copy_nonoverlapping(ptr as *const u8, np as *mut u8, idx as usize);} // don't do zero length copy
+                write((np + idx) as *mut u8, c);
+                if idx != il {copy_nonoverlapping((ptr + idx) as *const u8, (np + idx + 1) as *mut u8, (il - idx) as usize);} // don't do zero length copy
+                Line::dealloc(ptr as *mut u8, ic, 2);
+                Line::set_ptr_a(laddr, np);
+                Line::set_cap_a(laddr, ic * 2);
+            } else {
+                copy((ptr + idx) as *const u8, (ptr + idx + 1) as *mut u8, (il - idx) as usize);
+                write((ptr + idx) as *mut u8, c);
+            }
+        }
+    }
+    pub fn remove_char_a(laddr: u64, idx: u64) -> u8 {
+        let il: u64 = Line::len_a(laddr);
+        if idx >= il {return 0;}
+        if idx == il - 1 {
+            return Line::pop_char_a(laddr);
+        }
+        unsafe {
+            Line::set_len_a(laddr, il - 1);
+            let ic: u64 = Line::cap_a(laddr);
+            let c: u8 = read((laddr + idx) as *const u8);
+            let ptr: u64 = Line::get_ptr_a(laddr);
+            if il - 1 < ic / 4 {
+                let np: u64 = Line::alloc(ic / 2, 2) as u64;
+                if idx != 0 {copy_nonoverlapping(ptr as *const u8, np as *mut u8, idx as usize);}
+                copy_nonoverlapping((ptr + idx + 1) as *const u8, (np + idx) as *mut u8, (il - idx) as usize);
+                Line::dealloc(ptr as *mut u8, ic, 2);
+                Line::set_cap_a(laddr, ic / 2 + match (ic / 2) % 2 == 0 {true=>0,_=>1});
+                Line::set_ptr_a(laddr, np);
+                return c;
+            }
+            for i in (idx+1)..(il-1) {
+                write((ptr + i - 1) as *mut u8, read((ptr + i) as *const u8));
+            }
+            // for i in (idx+1)..il {
+            //     write((ptr+i-1) as *mut u8, read((ptr+i) as *const u8));
+            // }
+            return c;
         }
     }
     // adaptors for Line objects instead of pointer values
     pub fn to_string(&self) -> String {Line::to_string_a(self.get_addr())}
     pub fn get_char(&self, idx: u64) -> u8 {Line::get_char_a(self.get_addr(), idx)}
-    pub fn set_char(&self, idx: u64, c: u8) {Line::set_char_a(self.get_addr(), idx, c)}
+    pub fn set_char(&self, idx: u64, c: u8) {Line::set_char_a(self.get_addr(), idx, c);}
+    pub fn push_char(&self, c: u8) {Line::push_char_a(self.get_addr(), c);}
+    pub fn pop_char(&self) -> u8 {Line::pop_char_a(self.get_addr())}
+    pub fn insert_char(&self, idx: u64, c: u8) {Line::insert_char_a(self.get_addr(), idx, c);}
+    pub fn remove_char(&self, idx: u64) -> u8 {Line::remove_char_a(self.get_addr(), idx)}
 }
 
 // basic things
