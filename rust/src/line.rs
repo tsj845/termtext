@@ -2,6 +2,8 @@
 
 use std::alloc::{Layout, alloc, dealloc};
 use std::ptr::{read, write, copy_nonoverlapping, copy};
+use std::mem;
+use crate::*;
 
 /// represents a line of text with built in linked list functionality
 pub struct Line {
@@ -22,6 +24,141 @@ pub struct Line {
 impl std::fmt::Debug for Line {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Line").field("nextln", &format!("{:#x}",self.nextln)).field("prevln", &format!("{:#x}",self.prevln)).field("ptr", &format!("{:#x}",self.ptr)).field("cap", &self.cap).field("len", &self.len).field("line_num", &self.line_num).finish()
+    }
+}
+
+#[derive(Clone)]
+pub struct LineList {
+    head: u64,
+    tail: u64,
+    size: u64,
+    pub iterdeath: bool,
+}
+
+impl Drop for LineList {
+    fn drop(&mut self) {
+        if self.iterdeath {
+            if debugging(1) {println!("NO DROP, ITER");}
+            return;
+        }
+        let o = unsafe {EFLAG};
+        unsafe {
+            EFLAG = false;
+        }
+        if debugging(1) {println!("AFTER WRITE");}
+        if self.size != 0 {
+            if self.size == 1 {
+                mem::drop(Line::from_addr(self.head));
+            }
+        } else {
+            let mut i: u64 = 0;
+            loop {
+                let a = self.head;
+                self.head = Line::get_next_a(a);
+                mem::drop(Line::from_addr(a));
+                if i >= self.size {break;}
+                i += 1;
+            }
+        }
+        unsafe {
+            EFLAG = o;
+        }
+    }
+}
+
+pub fn line_to_ptr(l: Line) -> u64 {
+    return Box::into_raw(Box::new(l)) as u64;
+}
+
+impl IntoIterator for LineList {
+    type Item = u64;
+
+    type IntoIter = LineIter;
+
+    fn into_iter(mut self) -> Self::IntoIter {
+        self.iterdeath = true;
+        LineIter::faddr(self.head)
+    }
+}
+
+impl LineList {
+    pub fn new() -> Self {
+        Self {head: 0, tail: 0, size: 0, iterdeath: false}
+    }
+    pub fn index(&self, i: u64) -> Line {
+        let size = self.size;
+        if i >= size {
+            panic!("OUT OF BOUNDS INDEX: ATTEMPTED INDEX OF {i} IN LIST OF SIZE {size}");
+        }
+        let mut ret: u64 = self.head;
+        if i <= (size / 2) {
+            for _ in 0..i {
+                ret = Line::get_next_a(ret);
+            }
+        } else {
+            ret = self.tail;
+            for _ in 0..(size-i) {
+                ret = Line::get_prev_a(ret);
+            }
+        }
+        return Line::from_addr(ret);
+    }
+}
+
+impl FromIterator<String> for LineList {
+    fn from_iter<T: IntoIterator<Item = String>>(iter: T) -> Self {
+        let mut build: Self = Self {head: 0, tail: 0, size: 0, iterdeath: false};
+        let mut iter = iter.into_iter();
+        let mut cur = iter.next();
+        if cur.is_some() {
+            if debugging(2) {println!("{}", cur.as_ref().unwrap());}
+            build.head = Box::into_raw(Box::new(Line::from_str(&cur.unwrap()))) as u64;
+            if debugging(2) {println!("POST CONVERT ({:x}): {}", build.head, Line::to_string_a(build.head));}
+            build.tail = build.head;
+            loop {
+                cur = iter.next();
+                if cur.is_none() {break;}
+                if debugging(2) {println!("{}", cur.as_ref().unwrap());}
+                let a: u64 = line_to_ptr(Line::from_str(&cur.unwrap()));
+                if debugging(2) {println!("POST CONVERT ({:x}): {}", a, Line::to_string_a(a));}
+                Line::set_next_a(build.tail, a);
+                build.tail = a;
+            }
+        }
+        return build;
+    }
+}
+
+impl FromIterator<std::io::Result<String>> for LineList {
+    fn from_iter<T: IntoIterator<Item = std::io::Result<String>>>(iter: T) -> Self {
+        let iter = iter.into_iter();
+        return Self::from_iter(iter.map(|r:std::io::Result<String>|->String{r.unwrap()}));
+    }
+}
+
+pub struct LineIter {
+    l: u64,
+}
+
+impl LineIter {
+    pub fn faddr(l: u64) -> Self {
+        Self {l}
+    }
+}
+
+impl Iterator for LineIter {
+    type Item = u64;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.l == 0 {
+            if debugging(3) {println!("ITER ENDED");}
+            return None;
+        }
+        if debugging(3) {println!("ITER CUR ADDR: {:x}", self.l);}
+        let x: u64 = self.l;
+        self.l = Line::get_next_a(self.l);
+        if debugging(3) {println!("ITER NEXT ADDR: {:x}", self.l);}
+        return Some(x);
     }
 }
 
@@ -210,7 +347,7 @@ impl Line {
         }
     }
     // adaptors for Line objects instead of pointer values
-    pub fn to_string(&self) -> String {Line::to_string_a(self.get_addr())}
+    pub fn to_string(self) -> String {Line::to_string_a(self.get_addr())}
     pub fn get_char(&self, idx: u64) -> u8 {Line::get_char_a(self.get_addr(), idx)}
     pub fn set_char(&self, idx: u64, c: u8) {Line::set_char_a(self.get_addr(), idx, c);}
     pub fn push_char(&self, c: u8) {Line::push_char_a(self.get_addr(), c);}
@@ -237,6 +374,11 @@ impl Line {
     }
     // various constructors
     pub fn new() -> Line {Line {nextln: 0, prevln: 0, ptr: 0, cap: 0, len: 0, line_num: 0}}
+    pub fn from_addr(addr: u64) -> Line {
+        unsafe {
+            return read(addr as *const Line);
+        }
+    }
     pub fn new_with_np(nextln: u64, prevln: u64) -> Line {Line {nextln, prevln, ptr: 0, cap: 0, len: 0, line_num: 0}}
     pub fn from_str_with_np(nextln: u64, prevln: u64, s: &str) -> Line {
         let n: String = s.to_owned();
@@ -257,6 +399,17 @@ impl Line {
 
 impl Drop for Line {
     fn drop(&mut self) -> () {
+        unsafe {
+            if debugging(0) && EFLAG {
+                let a = (&*self as *const Line) as u64;
+                println!("DROPPING: {:x}, {}", a, Line::cap_a(a) + match self.cap % 2 == 0 {true=>0,_=>1});
+                if LD_COUNT >= TOLERANCE {
+                    panic!("LD_COUNT EXCEDED TOLERANCE");
+                } else {
+                    LD_COUNT += 1;
+                }
+            }
+        }
         // deallocate text
         if self.ptr as usize != 0 {
             Line::dealloc(self.ptr as *mut u8, self.cap, 2);

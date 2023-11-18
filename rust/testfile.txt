@@ -1,0 +1,2 @@
+LINE 1/2
+LINE 2/2 (EOF)
