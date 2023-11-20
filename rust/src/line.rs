@@ -21,69 +21,24 @@ pub struct Line {
     line_num: u64
 }
 
-impl std::fmt::Debug for Line {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Line").field("nextln", &format!("{:#x}",self.nextln)).field("prevln", &format!("{:#x}",self.prevln)).field("ptr", &format!("{:#x}",self.ptr)).field("cap", &self.cap).field("len", &self.len).field("line_num", &self.line_num).finish()
-    }
-}
-
 #[derive(Clone)]
 pub struct LineList {
     head: u64,
     tail: u64,
     size: u64,
+    pub total_size: u64,
     pub iterdeath: bool,
-}
-
-impl Drop for LineList {
-    fn drop(&mut self) {
-        if self.iterdeath {
-            if debugging(1) {println!("NO DROP, ITER");}
-            return;
-        }
-        let o = unsafe {EFLAG};
-        unsafe {
-            EFLAG = false;
-        }
-        if debugging(1) {println!("AFTER WRITE");}
-        if self.size != 0 {
-            if self.size == 1 {
-                mem::drop(Line::from_addr(self.head));
-            }
-        } else {
-            let mut i: u64 = 0;
-            loop {
-                let a = self.head;
-                self.head = Line::get_next_a(a);
-                mem::drop(Line::from_addr(a));
-                if i >= self.size {break;}
-                i += 1;
-            }
-        }
-        unsafe {
-            EFLAG = o;
-        }
-    }
 }
 
 pub fn line_to_ptr(l: Line) -> u64 {
     return Box::into_raw(Box::new(l)) as u64;
 }
 
-impl IntoIterator for LineList {
-    type Item = u64;
-
-    type IntoIter = LineIter;
-
-    fn into_iter(mut self) -> Self::IntoIter {
-        self.iterdeath = true;
-        LineIter::faddr(self.head)
-    }
-}
+pub struct InternalIterator {ptr: u64, len: u64, i: u64}
 
 impl LineList {
     pub fn new() -> Self {
-        Self {head: 0, tail: 0, size: 0, iterdeath: false}
+        Self {head: 0, tail: 0, size: 0, total_size: 0, iterdeath: false}
     }
     pub fn index(&self, i: u64) -> Line {
         let size = self.size;
@@ -105,111 +60,66 @@ impl LineList {
     }
 }
 
-impl FromIterator<String> for LineList {
-    fn from_iter<T: IntoIterator<Item = String>>(iter: T) -> Self {
-        let mut build: Self = Self {head: 0, tail: 0, size: 0, iterdeath: false};
-        let mut iter = iter.into_iter();
-        let mut cur = iter.next();
-        if cur.is_some() {
-            if debugging(2) {println!("{}", cur.as_ref().unwrap());}
-            build.head = Box::into_raw(Box::new(Line::from_str(&cur.unwrap()))) as u64;
-            if debugging(2) {println!("POST CONVERT ({:x}): {}", build.head, Line::to_string_a(build.head));}
-            build.tail = build.head;
-            loop {
-                cur = iter.next();
-                if cur.is_none() {break;}
-                if debugging(2) {println!("{}", cur.as_ref().unwrap());}
-                let a: u64 = line_to_ptr(Line::from_str(&cur.unwrap()));
-                if debugging(2) {println!("POST CONVERT ({:x}): {}", a, Line::to_string_a(a));}
-                Line::set_next_a(build.tail, a);
-                build.tail = a;
-            }
-        }
-        return build;
+impl InternalIterator {
+    pub(crate) fn new(ptr: u64, len: u64) -> Self {
+        Self { ptr, len, i: 0 }
     }
 }
 
-impl FromIterator<std::io::Result<String>> for LineList {
-    fn from_iter<T: IntoIterator<Item = std::io::Result<String>>>(iter: T) -> Self {
-        let iter = iter.into_iter();
-        return Self::from_iter(iter.map(|r:std::io::Result<String>|->String{r.unwrap()}));
-    }
-}
-
-pub struct LineIter {
-    l: u64,
-}
-
-impl LineIter {
-    pub fn faddr(l: u64) -> Self {
-        Self {l}
-    }
-}
-
-impl Iterator for LineIter {
-    type Item = u64;
+impl Iterator for InternalIterator {
+    type Item = u8;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.l == 0 {
-            if debugging(3) {println!("ITER ENDED");}
-            return None;
+        if self.i < self.len {
+            let v = unsafe{read((self.ptr + self.i) as *const u8)};
+            self.i += 1;
+            return Some(v);
         }
-        if debugging(3) {println!("ITER CUR ADDR: {:x}", self.l);}
-        let x: u64 = self.l;
-        self.l = Line::get_next_a(self.l);
-        if debugging(3) {println!("ITER NEXT ADDR: {:x}", self.l);}
-        return Some(x);
+        return None;
+    }
+}
+
+pub struct WrappedInternIter {n: InternalIterator}
+impl IntoIterator for WrappedInternIter {
+    type Item=u8;
+
+    type IntoIter=InternalIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.n
     }
 }
 
 // prop getters
 impl Line {
-    /// property accessor for `Line::cap`
     pub fn cap(&self) -> u64 {self.cap}
-    /// property accessor for `Line::len`
     pub fn len(&self) -> u64 {self.len}
-    /// property accessor for `Line::nextln`
     pub fn get_next(&self) -> u64 {self.nextln}
-    /// property accessor for `Line::prevln`
     pub fn get_prev(&self) -> u64 {self.prevln}
-    /// property accessor for `Line::len`
-    pub fn get_lnum(&self) -> u64 {self.line_num}
-    /// returns the memory address that this `Line` object is stored at
+    pub fn get_linenum(&self) -> u64 {self.line_num}
     pub fn get_addr(&self) -> u64 {(self as *const Line) as u64}
-    // get with Line obj address
-    /// version of `Line::cap` that takes a pointer
+    // gets with Line obj address
     pub fn cap_a(laddr: u64) -> u64 {unsafe {read((laddr + 24) as *const u64)}}
-    /// version of `Line::len` that takes a pointer
     pub fn len_a(laddr: u64) -> u64 {unsafe {read((laddr + 32) as *const u64)}}
-    /// version of `Line::get_next` that takes a pointer
     pub fn get_next_a(laddr: u64) -> u64 {unsafe {read(laddr as *const u64)}}
-    /// version of `Line::get_prev` that takes a pointer
     pub fn get_prev_a(laddr: u64) -> u64 {unsafe {read((laddr + 8) as *const u64)}}
-    /// version of `Line::get_lnum` that takes a pointer
-    pub fn get_lnum_a(laddr: u64) -> u64 {unsafe {read((laddr + 40) as *const u64)}}
-    /// gets the `Line::ptr` property
-    /// 
-    /// FOR INTERNAL USE ONLY
+    pub fn get_linenum_a(laddr: u64) -> u64 {unsafe {read((laddr + 40) as *const u64)}}
     fn get_ptr_a(laddr: u64) -> u64 {unsafe {read((laddr + 16) as *const u64)}}
 }
 
 // prop setters
 impl Line {
-    /// set the nextln property using a pointer
     pub fn set_next_a(laddr: u64, n: u64) {unsafe {write(laddr as *mut u64, n);}}
-    /// set the prevln property using a pointer
     pub fn set_prev_a(laddr: u64, n: u64) {unsafe {write((laddr + 8) as *mut u64, n);}}
-    /// sets the `Line::ptr` property
-    /// 
-    /// FOR INTERNAL USE ONLY
     fn set_ptr_a(laddr: u64, ptr: u64) {unsafe {write((laddr + 16) as *mut u64, ptr);}}
     fn set_cap_a(laddr: u64, n: u64) {unsafe {write((laddr + 24) as *mut u64, n);}}
     fn set_len_a(laddr: u64, n: u64) {unsafe {write((laddr + 32) as *mut u64, n);}}
-    // adaptors
-    /// set the nextln property
     pub fn set_next(&self, n: u64) {Line::set_next_a(self.get_addr(), n)}
-    /// set the prevln property
     pub fn set_prev(&self, n: u64) {Line::set_prev_a(self.get_addr(), n)}
+
+    pub fn iter_over(laddr: u64) -> WrappedInternIter {
+        return WrappedInternIter{n:InternalIterator::new(Line::get_ptr_a(laddr), Line::len_a(laddr))};
+    }
 
     fn resize(laddr: u64, mut n: u64) -> u64 {
         n = match n % 2 == 0 {true=>n,_=>(n+1)}; // ensure `n` has 2-byte alignment
@@ -240,33 +150,27 @@ impl Line {
 
 // str manipulation
 impl Line {
-    /// creates a [String] from this `Line`
-    /// 
-    /// NOTE THAT CHANGES TO THE RETURNED `String` WILL NOT BE RELFLECTED IN THE `Line`
+    /// CHANGES TO THE RETURNED `String` WILL NOT BE RELFLECTED IN THE `Line`
     pub fn to_string_a(laddr: u64) -> String {
         unsafe {
             let ptr: *const u8 = Line::get_ptr_a(laddr) as *const u8; // get the pointer
-            // let cap: usize = Line::cap_a(laddr) as usize; // get size
             let len: usize = Line::len_a(laddr) as usize; // get length
             if len == 0 {return String::new();} // guard
             String::from_iter(std::slice::from_raw_parts::<u8>(ptr, len).into_iter().map(|n:&u8| (*n) as char))
         }
     }
-    /// get an arbitrary index
     pub fn get_char_a(laddr: u64, idx: u64) -> u8 {
         unsafe {
             if Line::len_a(laddr) <= idx {return 0;}
             return read((Line::get_ptr_a(laddr) + idx) as *const u8);
         }
     }
-    /// set an arbitrary index
     pub fn set_char_a(laddr: u64, idx: u64, c: u8) {
         unsafe {
             if Line::len_a(laddr) <= idx {return;}
             write((Line::get_ptr_a(laddr) + idx) as *mut u8, c);
         }
     }
-    /// pushes a character to the end
     pub fn push_char_a(laddr: u64, c: u8) {
         unsafe {
             let mut ptr: u64 = Line::get_ptr_a(laddr);
@@ -280,7 +184,6 @@ impl Line {
             Line::set_len_a(laddr, il+1);
         }
     }
-    /// pops the last character and returns it
     pub fn pop_char_a(laddr: u64) -> u8 {
         unsafe {
             let ptr = Line::get_ptr_a(laddr); // get pointer
@@ -340,9 +243,6 @@ impl Line {
             for i in (idx+1)..(il-1) {
                 write((ptr + i - 1) as *mut u8, read((ptr + i) as *const u8));
             }
-            // for i in (idx+1)..il {
-            //     write((ptr+i-1) as *mut u8, read((ptr+i) as *const u8));
-            // }
             return c;
         }
     }
@@ -422,5 +322,111 @@ impl Drop for Line {
         if self.nextln != 0 {
             Line::set_prev_a(self.get_next(), 0);
         }
+    }
+}
+
+impl std::fmt::Debug for Line {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Line").field("nextln", &format!("{:#x}",self.nextln)).field("prevln", &format!("{:#x}",self.prevln)).field("ptr", &format!("{:#x}",self.ptr)).field("cap", &self.cap).field("len", &self.len).field("line_num", &self.line_num).finish()
+    }
+}
+
+impl Drop for LineList {
+    fn drop(&mut self) {
+        if self.iterdeath {
+            if debugging(1) {println!("NO DROP, ITER");}
+            return;
+        }
+        let o = unsafe {EFLAG};
+        unsafe {
+            EFLAG = false;
+        }
+        if debugging(1) {println!("AFTER WRITE");}
+        if self.size != 0 {
+            if self.size == 1 {
+                mem::drop(Line::from_addr(self.head));
+            }
+        } else {
+            let mut i: u64 = 0;
+            loop {
+                let a = self.head;
+                self.head = Line::get_next_a(a);
+                mem::drop(Line::from_addr(a));
+                if i >= self.size {break;}
+                i += 1;
+            }
+        }
+        unsafe {
+            EFLAG = o;
+        }
+    }
+}
+
+impl IntoIterator for LineList {
+    type Item = u64;
+
+    type IntoIter = LineIter;
+
+    fn into_iter(mut self) -> Self::IntoIter {
+        self.iterdeath = true;
+        LineIter::faddr(self.head)
+    }
+}
+
+impl FromIterator<String> for LineList {
+    fn from_iter<T: IntoIterator<Item = String>>(iter: T) -> Self {
+        let mut build: Self = Self {head: 0, tail: 0, size: 0, total_size: 0, iterdeath: false};
+        let mut iter = iter.into_iter();
+        let mut cur = iter.next();
+        if cur.is_some() {
+            if debugging(2) {println!("{}", cur.as_ref().unwrap());}
+            build.head = Box::into_raw(Box::new(Line::from_str(&cur.unwrap()))) as u64;
+            if debugging(2) {println!("POST CONVERT ({:x}): {}", build.head, Line::to_string_a(build.head));}
+            build.tail = build.head;
+            build.total_size = 1;
+            loop {
+                cur = iter.next();
+                if cur.is_none() {break;}
+                build.total_size += 1;
+                if debugging(2) {println!("{}", cur.as_ref().unwrap());}
+                let a: u64 = line_to_ptr(Line::from_str(&cur.unwrap()));
+                if debugging(2) {println!("POST CONVERT ({:x}): {}", a, Line::to_string_a(a));}
+                Line::set_next_a(build.tail, a);
+                build.tail = a;
+            }
+        }
+        return build;
+    }
+}
+
+impl FromIterator<std::io::Result<String>> for LineList {
+    fn from_iter<T: IntoIterator<Item = std::io::Result<String>>>(iter: T) -> Self {
+        let iter = iter.into_iter();
+        return Self::from_iter(iter.map(|r:std::io::Result<String>|->String{r.unwrap()}));
+    }
+}
+pub struct LineIter {
+    l: u64,
+}
+
+impl LineIter {
+    pub fn faddr(l: u64) -> Self {
+        Self {l}
+    }
+}
+
+impl Iterator for LineIter {
+    type Item = u64;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.l == 0 {
+            if debugging(3) {println!("ITER ENDED");}
+            return None;
+        }
+        if debugging(3) {println!("ITER CUR ADDR: {:x}", self.l);}
+        let x: u64 = self.l;
+        self.l = Line::get_next_a(self.l);
+        if debugging(3) {println!("ITER NEXT ADDR: {:x}", self.l);}
+        return Some(x);
     }
 }
