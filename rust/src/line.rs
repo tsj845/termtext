@@ -159,6 +159,17 @@ impl Line {
             String::from_iter(std::slice::from_raw_parts::<u8>(ptr, len).into_iter().map(|n:&u8| (*n) as char))
         }
     }
+    pub fn substr_a(laddr: u64, start: u64, end: u64) -> String {
+        unsafe {
+            let ptr: *const u8 = (Line::get_ptr_a(laddr)+start) as *const u8; // get the pointer
+            let len: u64 = Line::len_a(laddr); // get length
+            let tlen: usize = (end - start) as usize;
+            if tlen > len as usize {panic!("BAD LENGTH");}
+            if start >= len || end > len {panic!("OUT OF BOUNDS");}
+            if tlen == 0 {return String::new();} // guard
+            String::from_iter(std::slice::from_raw_parts::<u8>(ptr, tlen).into_iter().map(|n:&u8| (*n) as char))
+        }
+    }
     pub fn get_char_a(laddr: u64, idx: u64) -> u8 {
         unsafe {
             if Line::len_a(laddr) <= idx {return 0;}

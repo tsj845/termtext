@@ -10,7 +10,7 @@ pub(crate) const DEBUGGING: u64 =
 (0b0_0_0_0_0_0_0_0u64 << 24) |
 (0b0_0_0_0_0_0_0_0u64 << 16) |
 (0b0_0_0_0_0_0_0_0u64 << 8) |
- 0b0_0_0_0_0_0_1_0u64;
+ 0b0_1_0_0_0_0_0_0u64;
 
 ///
 /// registry:
@@ -20,4 +20,5 @@ pub(crate) const DEBUGGING: u64 =
 /// - (`3`) - LineIter
 /// - (`4`) - Controller
 /// - (`5`) - Controller -- test_readback
+/// - (`6`) - Controller -- no input loop
 pub(crate) const fn debugging(x:u64) -> bool {DEBUGGING&(1u64<<x)>0}
