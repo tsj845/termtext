@@ -1,5 +1,5 @@
 use console::{Term, measure_text_width, Alignment, Key};
-use std::io::{BufRead, Write};
+use std::io::{BufRead, Write, ErrorKind, Error};
 use std::fs::{File, write};
 use std::io;
 use std::time::SystemTime;
@@ -23,7 +23,21 @@ pub struct FileMeta {
     pub title: String,
     pub path: String,
     pub histpath: String,
-    pub last_modified: String,
+    pub last_modified: u64,
+} impl FileMeta {
+    fn fmt_last_modified(&self) -> String {
+        let years: u64 = self.last_modified / 31536000;
+        let rweeks = self.last_modified % 31536000;
+        let weeks: u64 = rweeks / 640800;
+        let rdays = rweeks % 640800;
+        let days: u64 = rdays / 86400;
+        let rhours = rdays % 86400;
+        let hours: u64 = rhours / 3600;
+        let rminutes = rhours % 3600;
+        let minutes: u64 = rhours / 60;
+        let seconds: u64 = rminutes % 60;
+        return format!("{}y-{}w-{}d-{}h-{}m-{}s", years, weeks, days, hours, minutes, seconds);
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -36,7 +50,7 @@ struct _MoveRestrict {
     pub down_max: u64,
     pub left_max: u64,
     pub right_max: u64,
-}impl _MoveRestrict {fn new()->Self{Self { up: false, down: true, left: false, right: false, up_max: 2, down_max: 0, left_max: 0, right_max: 0 }}}
+}impl _MoveRestrict {fn new()->Self{Self { up: true, down: true, left: true, right: true, up_max: 0, down_max: 0, left_max: 0, right_max: 0 }}}
 
 #[derive(Clone, Copy)]
 struct Attrs {
@@ -44,11 +58,13 @@ struct Attrs {
     pub frame_start: (u64, u64),
     pub pos: (u64, u64),
     pub mov_restrict: _MoveRestrict,
+    pub suppress_move_errs: bool,
 }
 
 pub struct Controller {
     pub list: LineList,
     pub meta: FileMeta,
+    activeline: u64,
     endflag: bool,
     endreason: String,
     terminal: Term,
@@ -57,19 +73,27 @@ pub struct Controller {
 
 impl Controller {
     pub fn from_file(title: String, path: String) -> Self {
-        let x = Self {
+        let mut x = Self {
             list: LineList::from_iter(std::io::BufReader::new(File::open(&path).unwrap()).lines()),
-            meta: FileMeta { title, path: path.clone(), histpath: "".to_owned(), last_modified: format!("{:?}", SystemTime::now().duration_since(std::fs::metadata(&path).unwrap().modified().unwrap()).unwrap().as_secs()) },
+            meta: FileMeta { title, path: path.clone(), histpath: "".to_owned(), last_modified: SystemTime::now().duration_since(std::fs::metadata(&path).unwrap().modified().unwrap()).unwrap().as_secs() },
+            activeline: 0,
             endflag: false,
             endreason: String::new(),
             terminal: Term::stdout(),
-            attrs: Attrs { size: (0,0), frame_start: (0,0), pos: (0,0), mov_restrict: _MoveRestrict::new() }
+            attrs: Attrs { size: (0,0), frame_start: (0,0), pos: (0,0), mov_restrict: _MoveRestrict::new(), suppress_move_errs: false }
         };
-        if debugging(5) {x.test_readback();}
+        x.activeline = x.list.index(0);
+        if debugging(5) {x.test_readback();x.terminal.read_key().unwrap();}
+        if debugging(7) {
+            x.terminal.clear_screen().unwrap();
+            println!("\x1b[38;2;200;200;0mWARNING:\x1b[0m DEBUG FLAG SEVEN IS SET, THIS WILL CAUSE ALL SAVE OPERATIONS TO FAIL SILENTLY");
+            x.terminal.read_key().unwrap();
+        }
         return x;
     }
     /// saves modified file content, EXTREMELY SLOW
     fn save(&mut self) -> () {
+        if debugging(7) {return;}
         let mut sbuf: String;
         {
             let x = self.list.total_size as usize;
@@ -104,13 +128,20 @@ impl Controller {
         // if ftext.as_bytes()[(tsize-1) as usize] == '\n' as u8 {
         //     ftext.pop();
         // }
+        ftext.pop();
         self.terminal.clear_screen()?;
-        let x = format!("{:?}", self.attrs.size);
+        print!("\x1b[{};{}f", self.attrs.size.0-1, 0);
+        let y = format!("{:?}", self.attrs.pos);
+        print!("{}", &y);
+        print!("{}", &console::pad_str(BOTTOM_TEXT, self.attrs.size.1 as usize, Alignment::Center, None)[y.len()..]);
+        print!("\x1b[T\x1b[1;1f");
+        let x = format!("{:?} {}\x1b[0m", self.attrs.size, match debugging(7){false=>"\x1b[38;2;0;200;0mSAVE ENABLED",_=>"\x1b[38;2;220;0;0mSAVE DISABLED"});
         print!("{}", &x);
-        println!("{}", console::pad_str(&(self.meta.title.clone()+"    "+&self.meta.last_modified), self.attrs.size.1 as usize - x.len(), Alignment::Center, None));
+        println!("{}", &console::pad_str(&(self.meta.title.clone()+"    "+&self.meta.fmt_last_modified()), self.attrs.size.1 as usize, Alignment::Center, None)[measure_text_width(&x)..]);
         self.terminal.write_all(ftext.as_bytes())?;
-        self.terminal.write_all(console::pad_str(BOTTOM_TEXT, self.attrs.size.1 as usize, Alignment::Center, None).as_bytes())?;
-        self.terminal.write_all(&[13,10])?;
+        // self.terminal.move_cursor_to(0, self.attrs.size.0 as usize)?;
+        // self.terminal.write_all(&[13,10])?;
+        self.terminal.move_cursor_to(self.attrs.pos.1 as usize, self.attrs.pos.0 as usize + 1)?;
         return Ok(());
     }
     fn end(&mut self) -> () {
@@ -138,7 +169,7 @@ impl Controller {
                     Key::ArrowRight => {self._right()?},
                     _ => {}
                 };
-                return Ok(NoAction);
+                return Ok(Refresh);
             }
         }
     }
@@ -173,7 +204,8 @@ impl Controller {
     fn test_readback(&self) -> () {
         println!("TESTING");
         for addr in self.list.clone().into_iter() {
-            println!("READBACK ({:x}, {})", addr, 0);
+            println!("READBACK ({:x}, {})", addr, Line::len_a(addr));
+            println!("READBACK N/P ({:x}, {:x})", Line::get_prev_a(addr), Line::get_next_a(addr));
             println!("{}", Line::to_string_a(addr));
         }
         if debugging(4) {println!("LOOP EXECUTED");}
@@ -182,19 +214,61 @@ impl Controller {
 
 impl Controller {
     fn _up(&mut self) -> BRes {
-        if self.attrs.mov_restrict.up || self.attrs.pos.0 > self.attrs.mov_restrict.up_max {return self.terminal.move_cursor_up(1);}
-        Ok(())
+        if self.attrs.pos.0 != 0 {
+            if self.attrs.mov_restrict.up || self.attrs.pos.0 > self.attrs.mov_restrict.up_max {
+                self.activeline = Line::get_prev_a(self.activeline);
+                self.attrs.pos.0 -= 1;
+                return self.terminal.move_cursor_up(1);
+            }
+        }
+        if !self.attrs.suppress_move_errs{return Ok(());}
+        return Err(Error::from(ErrorKind::ConnectionReset));
     }
     fn _down(&mut self) -> BRes {
-        if self.attrs.mov_restrict.down {return self.terminal.move_cursor_down(1);}
-        Ok(())
+        if !(self.attrs.pos.0 >= (self.attrs.size.0-4) || self.attrs.pos.0 >= (self.list.size()-1)) {
+            if self.attrs.mov_restrict.down || self.attrs.pos.0 < self.attrs.mov_restrict.down_max {
+                self.activeline = Line::get_next_a(self.activeline);
+                self.attrs.pos.0 += 1;
+                return self.terminal.move_cursor_down(1);
+            }
+        }
+        if !self.attrs.suppress_move_errs{return Ok(());}
+        return Err(Error::from(ErrorKind::ConnectionReset));
     }
     fn _left(&mut self) -> BRes {
-        if self.attrs.mov_restrict.left {return self.terminal.move_cursor_left(1);}
+        if self.attrs.pos.1 == 0 {
+            self.attrs.suppress_move_errs = true;
+            let mut r: BRes = Ok(());
+            match self._up() {
+                Ok(_) => {
+                    self.attrs.pos.1 = Line::len_a(self.activeline)-1;
+                },
+                Err(x) => {
+                    if x.kind() != ErrorKind::ConnectionReset {r = Err(x);}
+                }
+            };
+            self.attrs.suppress_move_errs = false;
+            return r;
+        }
+        if self.attrs.mov_restrict.left || self.attrs.pos.1 > self.attrs.mov_restrict.left_max {self.attrs.pos.1-=1;return self.terminal.move_cursor_left(1);}
         Ok(())
     }
     fn _right(&mut self) -> BRes {
-        if self.attrs.mov_restrict.right {return self.terminal.move_cursor_right(1);}
+        if self.attrs.pos.1 >= (Line::len_a(self.activeline)-1) {
+            self.attrs.suppress_move_errs = true;
+            let mut r: BRes = Ok(());
+            match self._down() {
+                Ok(_) => {
+                    self.attrs.pos.1 = 0;
+                },
+                Err(x) => {
+                    if x.kind() != ErrorKind::ConnectionReset {r = Err(x);}
+                }
+            };
+            self.attrs.suppress_move_errs = false;
+            return r;
+        }
+        if self.attrs.mov_restrict.right || self.attrs.pos.1 < self.attrs.mov_restrict.right_max || true {self.attrs.pos.1+=1;return self.terminal.move_cursor_right(1);}
         Ok(())
     }
 }

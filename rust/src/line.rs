@@ -40,7 +40,8 @@ impl LineList {
     pub fn new() -> Self {
         Self {head: 0, tail: 0, size: 0, total_size: 0, iterdeath: false}
     }
-    pub fn index(&self, i: u64) -> Line {
+    pub fn size(&self) -> u64 {self.size}
+    pub fn index(&self, i: u64) -> u64 {
         let size = self.size;
         if i >= size {
             panic!("OUT OF BOUNDS INDEX: ATTEMPTED INDEX OF {i} IN LIST OF SIZE {size}");
@@ -56,7 +57,8 @@ impl LineList {
                 ret = Line::get_prev_a(ret);
             }
         }
-        return Line::from_addr(ret);
+        return ret;
+        // return Line::from_addr(ret);
     }
 }
 
@@ -391,18 +393,21 @@ impl FromIterator<String> for LineList {
         let mut cur = iter.next();
         if cur.is_some() {
             if debugging(2) {println!("{}", cur.as_ref().unwrap());}
+            build.total_size = cur.as_ref().unwrap().len() as u64;
             build.head = Box::into_raw(Box::new(Line::from_str(&cur.unwrap()))) as u64;
             if debugging(2) {println!("POST CONVERT ({:x}): {}", build.head, Line::to_string_a(build.head));}
             build.tail = build.head;
-            build.total_size = 1;
+            build.size = 1;
             loop {
                 cur = iter.next();
                 if cur.is_none() {break;}
-                build.total_size += 1;
+                build.size += 1;
+                build.total_size += cur.as_ref().unwrap().len() as u64;
                 if debugging(2) {println!("{}", cur.as_ref().unwrap());}
                 let a: u64 = line_to_ptr(Line::from_str(&cur.unwrap()));
                 if debugging(2) {println!("POST CONVERT ({:x}): {}", a, Line::to_string_a(a));}
                 Line::set_next_a(build.tail, a);
+                Line::set_prev_a(a, build.tail);
                 build.tail = a;
             }
         }

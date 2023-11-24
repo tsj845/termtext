@@ -4,6 +4,6 @@ use rust::*;
 
 fn main() {
     better_panic::Settings::new().verbosity(better_panic::Verbosity::Medium).install();
-    let mut control: Controller = Controller::from_file("test".to_owned(), "testfile.txt".to_owned());
+    let mut control: Controller = Controller::from_file("testfile.txt".to_owned(), "testfile.txt".to_owned());
     control.start();
 }
