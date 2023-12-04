@@ -242,8 +242,8 @@ impl Line {
         unsafe {
             Line::set_len_a(laddr, il - 1);
             let ic: u64 = Line::cap_a(laddr);
-            let c: u8 = read((laddr + idx) as *const u8);
             let ptr: u64 = Line::get_ptr_a(laddr);
+            let c: u8 = read((ptr + idx) as *const u8);
             if il - 1 < ic / 4 {
                 let np: u64 = Line::alloc(ic / 2, 2) as u64;
                 if idx != 0 {copy_nonoverlapping(ptr as *const u8, np as *mut u8, idx as usize);}
@@ -253,7 +253,7 @@ impl Line {
                 Line::set_ptr_a(laddr, np);
                 return c;
             }
-            for i in (idx+1)..(il-1) {
+            for i in (idx+1)..il {
                 write((ptr + i - 1) as *mut u8, read((ptr + i) as *const u8));
             }
             return c;
