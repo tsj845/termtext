@@ -7,7 +7,7 @@ use data::*;
 // use chrono::{};
 
 use crate::*;
-use crate::adaptor::*;
+use crate::reader::*;
 
 static BOTTOM_TEXT: &str = "^X to quit, ^S to save, ^Q to force quit";
 
@@ -144,9 +144,10 @@ impl Controller {
         }
         self.sflag(DArea::BotText);
         self.sflag(DArea::BTAll);
-        if self.cflag(DArea::BotText) {
-            print!("\x1b[{};1f", self.attrs.size.0);
-            if self.cflag(DArea::BTCuP) {
+        self.sflag(DArea::BTCuP);
+        if self.cflag(DArea::BotText) || true {
+            print!("\x1b[{};1f", self.attrs.size.0-1);
+            if self.cflag(DArea::BTCuP) || true {
                 let lw = self.attrs.display.bot_text_left_length;
                 if lw > 0 {
                     print!("{}", String::from_iter(std::iter::repeat(' ').take(lw)));
@@ -163,11 +164,12 @@ impl Controller {
         }
         // self.terminal.move_cursor_to(0, self.attrs.size.0 as usize)?;
         // self.terminal.write_all(&[13,10])?;
-        if debugging(9) {
-            print!("\x1b[f{:?}", self.attrs.pos);
-            self.terminal.read_key()?;
-        }
-        Term::set_cur_pos(self.attrs.pos.1, self.attrs.pos.0 + 1);
+        // if debugging(9) {
+        //     print!("\x1b[f{:?}", self.attrs.pos);
+        //     self.terminal.read_key()?;
+        // }
+        // Term::set_cur_pos(self.attrs.pos.1, self.attrs.pos.0 + 1);
+        print!("\x1b[{};{}f", self.attrs.pos.0 + 2, self.attrs.pos.1 + 1);
         return BOK;
     }
     fn end(&mut self) -> () {
@@ -197,6 +199,10 @@ impl Controller {
                         if c == 19 as char {return Ok(Save);}
                         if c == 24 as char {return Ok(QuitOk("CONTROL X".to_owned()));}
                         if c == 20 as char {return Ok(DumpContent);}
+                        if c == 18 as char {self.aflag();
+                            return Ok(Refresh);
+                            // return Err(Error::new(ErrorKind::InvalidInput, "CTRL-R"));
+                        }
                         self.attrs.display.redisplay = oreg;
                         self._lastcode = c as u64;
                         self.sflag(DArea::EditArea);
@@ -208,10 +214,10 @@ impl Controller {
                         self.sflag(DArea::BotText);
                         self.sflag(DArea::BTCuP);
                         match k {
-                            Key::ArrowUp => {self._up()?},
-                            Key::ArrowDown => {self._down()?},
-                            Key::ArrowLeft => {self._left()?},
-                            Key::ArrowRight => {self._right()?},
+                            Key::ArrowUp => {self._lastcode=201;self._up()?},
+                            Key::ArrowDown => {self._lastcode=202;self._down()?},
+                            Key::ArrowLeft => {self._lastcode=203;self._left()?},
+                            Key::ArrowRight => {self._lastcode=204;self._right()?},
                             Key::Del | Key::Backspace => {self.sflag(DArea::EditArea);self.sflag(DArea::BotText);self._delete()?},
                             Key::Alt | Key::Shift => {
                                 if k == Key::Alt {
@@ -420,6 +426,6 @@ impl Controller {
         cflag(&mut self.attrs.display.redisplay, x as u64)
     }
     fn aflag(&mut self) -> () {
-        aflag(&mut self.attrs.display.redisplay);
+        self.attrs.display.redisplay = !0;
     }
 }

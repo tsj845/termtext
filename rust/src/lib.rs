@@ -3,7 +3,7 @@ extern crate console;
 extern crate crossterm;
 extern crate once_cell;
 extern crate lazy_static;
-mod adaptor;
+mod reader;
 mod statics;
 use statics::*;
 use line::*;
