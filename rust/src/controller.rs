@@ -1,5 +1,8 @@
 // use console::{Term, measure_text_width, Alignment, Key};
 use console::{measure_text_width, Alignment};
+use crossterm::event::read as read_input;
+#[allow(unused_imports)]
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers, ModifierKeyCode, MediaKeyCode, MouseEvent, MouseButton, MouseEventKind};
 use std::io::{BufRead, Write, ErrorKind, Error};
 use std::fs::{File, write};
 use std::io;
@@ -14,15 +17,15 @@ static BOTTOM_TEXT: &str = "^X to quit, ^S to save, ^Q to force quit";
 type BRes = io::Result<()>;
 const BOK: BRes = Ok(());
 
-enum InputAction {
-    NoAction,
-    QuitOk(String),
-    QuitErr(String),
-    Refresh,
-    Save,
-    DumpContent,
-}
-use InputAction::{NoAction,QuitOk,QuitErr,Refresh,Save,DumpContent};
+// enum InputAction {
+//     NoAction,
+//     QuitOk(String),
+//     QuitErr(String),
+//     Refresh,
+//     Save,
+//     DumpContent,
+// }
+// use InputAction::{NoAction,QuitOk,QuitErr,Refresh,Save,DumpContent};
 
 pub struct Controller {
     pub list: LineList,
@@ -49,14 +52,14 @@ impl Controller {
             attrs: Attrs { size: (0,0), frame_start: (0,0), pos: (0,0), pref_x: 0, mov_restrict: _MoveRestrict::new(), suppress_move_errs: false, display: _Display::new() },
             _lastcode: 0,
         };
-        x.terminal.begin()?;
+        // x.terminal.begin()?;
         x.attrs.display.lastmod = x.meta.fmt_last_modified();
         x.activeline = x.list.index(0);
-        if debugging(5) {x.test_readback();x.terminal.read_key()?;}
+        if debugging(5) {x.test_readback();x.terminal.term.read_key()?;}
         if debugging(7) {
             x.terminal.clear_screen();
             println!("\x1b[38;2;200;200;0mWARNING:\x1b[0m DEBUG FLAG SEVEN IS SET, THIS WILL CAUSE ALL SAVE OPERATIONS TO FAIL SILENTLY\r");
-            x.terminal.read_key()?;
+            x.terminal.term.read_key()?;
         }
         if debugging(63) {
             x.terminal.clear_line();
@@ -67,9 +70,9 @@ impl Controller {
             x.endflag = true;
             x.endreason = "FLAG 63".to_owned();
             x.waserr = true;
-            x.terminal.read_key()?;
+            x.terminal.term.read_key()?;
         }
-        x.terminal.end()?;
+        // x.terminal.end()?;
         return Ok(x);
     }
     /// saves modified file content, EXTREMELY SLOW
@@ -115,50 +118,48 @@ impl Controller {
                     ftext.push('\n');
                 }
             }
-            // if ftext.as_bytes()[(tsize-1) as usize] == '\n' as u8 {
-            //     ftext.pop();
-            // }
             ftext.pop();
         }
-        // Term::clear_screen();
+        self.terminal.queue();
+        self.terminal.top_left();
         if self.cflag(DArea::TopText) {
-            // print!("\x1b[T\x1b[1;1f");
-            print!("\x1b[1;1f");
             if self.cflag(DArea::TTSaved) {
                 let lw = self.attrs.display.top_text_left_length;
                 if lw > 0 {
                     print!("{}", String::from_iter(std::iter::repeat(' ').take(lw)));
-                    print!("\x1b[1;1f");
+                    self.terminal.top_left();
                 }
-                let x = format!("{:?} {}\x1b[0m", self.attrs.size, match debugging(7){false=>"\x1b[38;2;0;200;0mSAVE ENABLED",_=>"\x1b[38;2;220;0;0mSAVE DISABLED"});
+                let x = format!("{:?} {:?} {}\x1b[0m", self.attrs.size, self.attrs.pos, match debugging(7){false=>"\x1b[38;2;0;200;0mSAVE ENABLED",_=>"\x1b[38;2;220;0;0mSAVE DISABLED"});
                 print!("{}", &x);
                 self.attrs.display.top_text_left_length = measure_text_width(&x);
             }
             println!("{}\r", &console::pad_str(&(self.meta.title.clone()+"    "+&self.attrs.display.lastmod), self.attrs.size.1 as usize, Alignment::Center, None)[self.attrs.display.top_text_left_length..]);
-        } else {
-            print!("\x1b[2;1f");
         }
+        self.terminal.down();
         if self.cflag(DArea::EditArea) {
-            print!("\x1b[1T\x1b[1B\x1b[0J\x1b[1S\x1b[1A");
+            self.terminal.scroll_down();
+            self.terminal.down();
+            self.terminal.clear_to_end();
+            self.terminal.scroll_up();
+            self.terminal.up();
+            // print!("\x1b[1T\x1b[1B\x1b[0J\x1b[1S\x1b[1A");
             print!("{ftext}");
         }
-        self.sflag(DArea::BotText);
-        self.sflag(DArea::BTAll);
-        self.sflag(DArea::BTCuP);
-        if self.cflag(DArea::BotText) || true {
-            print!("\x1b[{};1f", self.attrs.size.0-1);
-            if self.cflag(DArea::BTCuP) || true {
+        if self.cflag(DArea::BotText) {
+            self.terminal.set_cur_row(self.attrs.size.0);
+            // print!("\x1b[{};1f", self.attrs.size.0);
+            if self.cflag(DArea::BTCuP) {
                 let lw = self.attrs.display.bot_text_left_length;
                 if lw > 0 {
                     print!("{}", String::from_iter(std::iter::repeat(' ').take(lw)));
-                    print!("\x1b[{};1f", self.attrs.size.0);
+                    self.terminal.set_cur_row(self.attrs.size.0);
                 }
                 let y = format!("{:?} LKC: {}", self.attrs.pos, self._lastcode);
                 print!("{}", &y);
                 self.attrs.display.bot_text_left_length = y.len();
             }
             if self.cflag(DArea::BTAll) {
-                print!("\x1b[{};{}f", self.attrs.size.0, self.attrs.display.bot_text_left_length + 1);
+                self.terminal.set_cur_pos(self.attrs.size.0, self.attrs.display.bot_text_left_length as u64 + 1);
                 print!("{}", &console::pad_str(BOTTOM_TEXT, self.attrs.size.1 as usize, Alignment::Center, None)[self.attrs.display.bot_text_left_length..]);
             }
         }
@@ -169,11 +170,13 @@ impl Controller {
         //     self.terminal.read_key()?;
         // }
         // Term::set_cur_pos(self.attrs.pos.1, self.attrs.pos.0 + 1);
-        print!("\x1b[{};{}f", self.attrs.pos.0 + 2, self.attrs.pos.1 + 1);
+        self.terminal.set_cur_pos(self.attrs.pos.0 + 1, self.attrs.pos.1);
+        self.terminal.flush();
         return BOK;
     }
     fn end(&mut self) -> () {
         let _ = self.terminal.end();
+        let _ = self.terminal.cleanup();
         self.save();
         self.meta.path.clear(); // ensure fs path is invalidated
         self.terminal.clear_screen();
@@ -181,62 +184,133 @@ impl Controller {
             println!("QUIT FOR REASON: {}", self.endreason);
         }
     }
-    fn handle_input(&mut self) -> io::Result<InputAction> {
-        let input: Input = self.terminal.read_input()?;
-        match input {
-            KeyIn(mut k) => {
-                match k {
-                    Key::Tab => {k=Key::Char('\t');},
-                    Key::Enter => {k=Key::Char('\n');},
-                    _ => {},
-                };
-                match k {
-                    Key::Char(c) => {
-                        let oreg = self.attrs.display.redisplay;
-                        self.aflag();
-                        if c == 0 as char {return Ok(QuitErr("NULL KEY".to_owned()));}
-                        if c == 17 as char {return Ok(QuitErr("FORCE QUIT".to_owned()));}
-                        if c == 19 as char {return Ok(Save);}
-                        if c == 24 as char {return Ok(QuitOk("CONTROL X".to_owned()));}
-                        if c == 20 as char {return Ok(DumpContent);}
-                        if c == 18 as char {self.aflag();
-                            return Ok(Refresh);
-                            // return Err(Error::new(ErrorKind::InvalidInput, "CTRL-R"));
-                        }
-                        self.attrs.display.redisplay = oreg;
-                        self._lastcode = c as u64;
-                        self.sflag(DArea::EditArea);
-                        self.sflag(DArea::BotText);
-                        self.sflag(DArea::BTAll);
-                        return Ok(Refresh);
-                    },
-                    _ => {
-                        self.sflag(DArea::BotText);
-                        self.sflag(DArea::BTCuP);
-                        match k {
-                            Key::ArrowUp => {self._lastcode=201;self._up()?},
-                            Key::ArrowDown => {self._lastcode=202;self._down()?},
-                            Key::ArrowLeft => {self._lastcode=203;self._left()?},
-                            Key::ArrowRight => {self._lastcode=204;self._right()?},
-                            Key::Del | Key::Backspace => {self.sflag(DArea::EditArea);self.sflag(DArea::BotText);self._delete()?},
-                            Key::Alt | Key::Shift => {
-                                if k == Key::Alt {
-                                    self._lastcode = 257;
-                                } else {
-                                    self._lastcode = 258;
-                                }
-                                return Ok(Refresh);
-                            },
-                            _ => {self.cflag(DArea::BTCuP);self.cflag(DArea::BotText);}
-                        };
-                        self.sflag(DArea::BotText);
-                        return Ok(Refresh);
+    // fn handle_key(&mut self) -> io::Result<InputAction> {
+    //     Ok(NoAction)
+    // }
+    fn input_loop(&mut self) -> BRes {
+        self.terminal.begin()?;
+        'outer: loop {
+            let input: Event = read_input()?;
+            match input {
+                Event::Key(mut k) => {
+                    if k.kind == KeyEventKind::Release {
+                        continue 'outer;
                     }
-                }
-            },
-            _ => {return Ok(NoAction);}
-        };
+                    // if k.state == KeyEventState::CAPS_LOCK {} todo!()
+                    if k.modifiers.contains(KeyModifiers::SHIFT) {
+                        k.code = apply_key_shift(k.code)?;
+                    }
+                    if k.modifiers.contains(KeyModifiers::CONTROL) {
+                        k.code = apply_key_ctrl(k.code)?;
+                    }
+                    match (k.code, k.modifiers) {
+                        (KeyCode::Char(c), _) => {
+                            if c == 17 as char {self.waserr=true;self.endreason="FORCE QUIT".to_owned();break 'outer;}
+                            if c == 24 as char {self.endreason="CONTROL X".to_owned();break 'outer;}
+                            if c == 19 as char {self.save();continue 'outer;}
+                            if c == 20 as char {
+                                if debugging(8) {
+                                    self.__dumpcontent()?;
+                                    self.aflag();
+                                    self.render_screen()?;
+                                }
+                                continue 'outer;
+                            }
+                            if c == 18 as char {
+                                self.aflag();
+                                self.attrs.pos.1 += 1;
+                                self.render_screen()?;
+                                continue 'outer;
+                            }
+                            if c == 4 as char {
+                                self.terminal.save_raw();
+                                self.terminal.term.clear_screen()?;
+                                print!("POS: {:?}\n", self.attrs.pos);
+                                // print!("\x1b[2J\x1b[HPOS: {:?}", self.attrs.pos);
+                                self.terminal.term.read_key()?;
+                                self.terminal.restore_raw();
+                            }
+                            self.aflag();
+                            self.render_screen()?;
+                        },
+                        (KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right, _) => {
+                            match k.code {
+                                KeyCode::Up => {self._up()?;},
+                                KeyCode::Down => {self._down()?;},
+                                KeyCode::Left => {self._left()?;},
+                                KeyCode::Right => {self._right()?;},
+                                _ => {unreachable!();},
+                                // _ => unsafe {std::hint::unreachable_unchecked();}
+                            };
+                            // self.sflag(DArea::BotText);
+                            self.render_screen()?;
+                        }
+                        (_, _) => {},
+                    };
+                },
+                _ => {},
+            };
+        }
+        self.terminal.end()?;
+        self.terminal.cleanup()?;
+        Ok(())
     }
+    // fn handle_input(&mut self) -> io::Result<InputAction> {
+    //     let input: Input = self.terminal.read_input()?;
+    //     match input {
+    //         KeyIn(mut k) => {
+    //             match k {
+    //                 Key::Tab => {k=Key::Char('\t');},
+    //                 Key::Enter => {k=Key::Char('\n');},
+    //                 _ => {},
+    //             };
+    //             match k {
+    //                 Key::Char(c) => {
+    //                     let oreg = self.attrs.display.redisplay;
+    //                     self.aflag();
+    //                     if c == 0 as char {return Ok(QuitErr("NULL KEY".to_owned()));}
+    //                     if c == 17 as char {return Ok(QuitErr("FORCE QUIT".to_owned()));}
+    //                     if c == 19 as char {return Ok(Save);}
+    //                     if c == 24 as char {return Ok(QuitOk("CONTROL X".to_owned()));}
+    //                     if c == 20 as char {return Ok(DumpContent);}
+    //                     if c == 18 as char {self.aflag();
+    //                         return Ok(Refresh);
+    //                         // return Err(Error::new(ErrorKind::InvalidInput, "CTRL-R"));
+    //                     }
+    //                     self.attrs.display.redisplay = oreg;
+    //                     self._lastcode = c as u64;
+    //                     self.sflag(DArea::EditArea);
+    //                     self.sflag(DArea::BotText);
+    //                     self.sflag(DArea::BTAll);
+    //                     return Ok(Refresh);
+    //                 },
+    //                 _ => {
+    //                     self.sflag(DArea::BotText);
+    //                     self.sflag(DArea::BTCuP);
+    //                     match k {
+    //                         Key::ArrowUp => {self._lastcode=201;self._up()?},
+    //                         Key::ArrowDown => {self._lastcode=202;self._down()?},
+    //                         Key::ArrowLeft => {self._lastcode=203;self._left()?},
+    //                         Key::ArrowRight => {self._lastcode=204;self._right()?},
+    //                         Key::Del | Key::Backspace => {self.sflag(DArea::EditArea);self.sflag(DArea::BotText);self._delete()?},
+    //                         Key::Alt | Key::Shift => {
+    //                             if k == Key::Alt {
+    //                                 self._lastcode = 257;
+    //                             } else {
+    //                                 self._lastcode = 258;
+    //                             }
+    //                             return Ok(Refresh);
+    //                         },
+    //                         _ => {self.cflag(DArea::BTCuP);self.cflag(DArea::BotText);}
+    //                     };
+    //                     self.sflag(DArea::BotText);
+    //                     return Ok(Refresh);
+    //                 }
+    //             }
+    //         },
+    //         _ => {return Ok(NoAction);}
+    //     };
+    // }
     fn _init(&mut self) -> io::Result<()> {
         self.terminal.begin()?;
         self.terminal.clear_screen();
@@ -252,27 +326,29 @@ impl Controller {
         self._init()?;
         if debugging(6) {return BOK;}
         // run
-        loop {
-            if self.endflag {
-                self.end();
-                break;
-            }
-            match self.handle_input()? {
-                NoAction => {},
-                QuitOk(x) => {self.endflag=true;self.endreason=x;},
-                QuitErr(x) => {self.endflag=true;self.endreason=x;self.waserr=true;},
-                Refresh => {self.render_screen()?;},
-                Save => {self.save();},
-                DumpContent => {
-                    if debugging(8) {
-                        self.__dumpcontent()?;
-                        self.render_screen()?;
-                    }
-                },
-            }
-        }
-        self.terminal.end()?;
-        BOK
+        // loop {
+        //     if self.endflag {
+        //         self.end();
+        //         break;
+        //     }
+        //     match self.handle_key()? {
+        //         NoAction => {},
+        //         QuitOk(x) => {self.endflag=true;self.endreason=x;},
+        //         QuitErr(x) => {self.endflag=true;self.endreason=x;self.waserr=true;},
+        //         Refresh => {self.render_screen()?;},
+        //         Save => {self.save();},
+        //         DumpContent => {
+        //             if debugging(8) {
+        //                 self.__dumpcontent()?;
+        //                 self.render_screen()?;
+        //             }
+        //         },
+        //     }
+        // }
+        // self.terminal.end()?;
+        let r = self.input_loop();
+        self.end();
+        r
     }
     fn test_readback(&mut self) -> () {
         self.terminal.save_raw();
@@ -305,6 +381,7 @@ impl Controller {
                 if self.attrs.pos.0 == 0 {
                     // let x = self.attrs.pos.1;
                     self.attrs.pos.1 = 0;
+                    self.attrs.pref_x = 0;
                     // Term::left();
                 }
                 else if self.attrs.mov_restrict.up || self.attrs.pos.0 > self.attrs.mov_restrict.up_max {
@@ -332,6 +409,7 @@ impl Controller {
                 if !c1 {
                     // Term::right_n(l-self.attrs.pos.1);
                     self.attrs.pos.1 = l;
+                    self.attrs.pref_x = self.attrs.pos.1;
                 }
                 else if self.attrs.mov_restrict.down || self.attrs.pos.0 < self.attrs.mov_restrict.down_max {
                     self.activeline = Line::get_next_a(self.activeline);
@@ -363,11 +441,13 @@ impl Controller {
                     }
                 };
             }
+            self.attrs.pref_x = self.attrs.pos.1;
             self.attrs.suppress_move_errs = false;
             return r;
         }
         if self.attrs.mov_restrict.left || self.attrs.pos.1 > self.attrs.mov_restrict.left_max {self.attrs.pos.1-=1;
             // Term::left();
+            self.attrs.pref_x = self.attrs.pos.1;
         }
         BOK
     }
@@ -385,11 +465,13 @@ impl Controller {
                     }
                 };
             }
+            self.attrs.pref_x = self.attrs.pos.1;
             self.attrs.suppress_move_errs = false;
             return r;
         }
         if self.attrs.mov_restrict.right || self.attrs.pos.1 < self.attrs.mov_restrict.right_max || true {self.attrs.pos.1+=1;
             // Term::right();
+            self.attrs.pref_x = self.attrs.pos.1;
         }
         BOK
     }
@@ -412,7 +494,9 @@ impl Controller {
     fn __dumpcontent(&mut self) -> BRes {
         self.terminal.clear_screen();
         self.test_readback();
-        self.terminal.read_key()?;
+        self.terminal.save_raw();
+        self.terminal.term.read_key()?;
+        self.terminal.restore_raw();
         return BOK;
     }
     fn gflag(&self, x:DArea) -> bool {
