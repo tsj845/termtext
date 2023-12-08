@@ -37,30 +37,57 @@ pub(crate) struct _MoveRestrict {
 }impl _MoveRestrict {pub(crate) fn new()->Self{Self { up: true, down: true, left: true, right: true, up_max: 0, down_max: 0, left_max: 0, right_max: 0 }}}
 
 /// display areas
-#[derive(Clone, Copy)]
-pub(crate) enum DArea {
-    TopText = 0,
-    BotText = 1,
-    EditArea = 2,
-    TTAll = 3,
-    BTAll = 4,
-    EAAll = 5,
-    BTCuP = 6,
-    TTSaved,
-    EACuL,
-    EACuLNext,
-    EACuLNexts,
-    EACULPrev,
-}
-impl DArea {
-    pub(crate) fn allflags(a: Self) -> u64 {
-        match a {
-            Self::TTAll => 0b10000000u64,
-            Self::BTAll => 0b100000u64,
-            Self::EAAll => 0b11110000000u64,
-            _ => 0u64,
-        }
+// #[derive(Clone, Copy)]
+#[allow(non_snake_case)]
+pub(crate) mod DArea {
+    #![allow(non_upper_case_globals)]
+    pub type DArea = u64;
+    #[allow(non_camel_case_types)]
+    enum Name { // done like this to allow auto updating the flags
+        toptext = 0,
+        bottext,
+        editarea,
+        ttall,
+        btall,
+        eaall,
+        btcup,
+        ttsize,
+        ttsaved,
+        eacul,
+        eaculnext,
+        eaculnexts,
+        eaculprev,
     }
+    use Name::*;
+    pub const TopText:    DArea = 1<<toptext as u64;
+    pub const BotText:    DArea = 1<<bottext as u64;
+    pub const EditArea:   DArea = 1<<editarea as u64;
+    /// the 'all' flag for top text
+    pub const TTAllE:     DArea = 1<<ttall as u64;
+    /// top text all
+    pub const TTAll:      DArea = TopText | TTSize | TTSaved | TTAllE;
+    /// the 'all' flag for bot text
+    pub const BTAllE:     DArea = 1<<btall as u64;
+    /// bot text all
+    pub const BTAll:      DArea = BotText | BTCuP | BTAllE;
+    /// the 'all' flag for edit area
+    pub const EAAllE:     DArea = 1<<eaall as u64;
+    /// edit area all
+    pub const EAAll:      DArea = EditArea | EACuL | EACuLNext | EACuLNexts | EACULPrev | EAAllE;
+    /// bot text cursor position display
+    pub const BTCuP:      DArea = 1<<btcup as u64;
+    /// top text size display
+    pub const TTSize:     DArea = 1<<ttsize as u64;
+    /// top text saved status
+    pub const TTSaved:    DArea = 1<<ttsaved as u64;
+    /// edit area cur line
+    pub const EACuL:      DArea = 1<<eacul as u64;
+    /// edit area cur line + next (1) line
+    pub const EACuLNext:  DArea = 1<<eaculnext as u64;
+    /// edit area cur line + next (all) lines
+    pub const EACuLNexts: DArea = 1<<eaculnexts as u64;
+    /// edit area cur line + prev (1) line
+    pub const EACULPrev:  DArea = 1<<eaculprev as u64;
 }
 
 pub(crate) struct _Display {
@@ -82,9 +109,9 @@ pub(crate) struct _Display {
     /// - (`10`) - EA - cur + next lines
     /// - (`11`) - EA - cur + prev line only
     pub redisplay: u64,
-    pub top_text_left_length: usize,
-    pub bot_text_left_length: usize,
-} impl _Display {pub(crate) fn new()->Self{Self {msg:String::new(),lastmod:String::new(),redisplay:0,top_text_left_length:0,bot_text_left_length:0}}}
+    pub tt_left_len: usize,
+    pub bt_left_len: usize,
+} impl _Display {pub(crate) fn new()->Self{Self {msg:String::new(),lastmod:String::new(),redisplay:0,tt_left_len:0,bt_left_len:0}}}
 
 pub(crate) struct Attrs {
     /// rows cols

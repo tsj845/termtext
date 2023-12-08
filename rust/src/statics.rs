@@ -29,18 +29,18 @@ pub(crate) const fn debugging(x:u64) -> bool {DEBUGGING&(1u64<<x)>0}
 
 /// queries the state of a flag
 pub(crate) fn gflag(reg:u64,x:u64) -> bool {
-    reg&(1u64<<x)>0
+    reg&x>0
 }
 
 /// sets a flag
 pub(crate) fn sflag(reg:&mut u64,x:u64) -> () {
-    *reg|=1u64<<x;
+    *reg|=x;
 }
 
 /// clears a flag and returns what it was previously
 pub(crate) fn cflag(reg:&mut u64,x:u64) -> bool {
-    let b=*reg&(1u64<<x)>0;
-    *reg&=!(1u64<<x);
+    let b=*reg&x>0;
+    *reg&=!x;
     b
 }
 

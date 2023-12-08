@@ -41,6 +41,46 @@ impl LineList {
         Self {head: 0, tail: 0, size: 0, total_size: 0, iterdeath: false}
     }
     pub fn size(&self) -> u64 {self.size}
+    pub fn insert(&self, laddr: u64, index: u64) -> () {
+        unsafe {
+            let saddr: u64 = (self as *const Self) as u64;
+            // increment size
+            write((saddr + 16) as *mut u64, read((saddr + 16) as *const u64) + 1);
+            if index == 0 {
+                if self.head != 0 {
+                    Line::set_prev_a(self.head, laddr);
+                    Line::set_next_a(laddr, self.head);
+                } else {
+                    // update tail
+                    write((saddr + 8) as *mut u64, laddr);
+                }
+                // update head
+                write(saddr as *mut u64, laddr);
+                return;
+            }
+            if index == self.size {
+                if self.tail != 0 {
+                    Line::set_next_a(self.tail, laddr);
+                    Line::set_prev_a(laddr, self.tail);
+                } else {
+                    // update head
+                    write(saddr as *mut u64, laddr);
+                }
+                // update tail
+                write((saddr + 8) as *mut u64, laddr);
+                return;
+            }
+            let mut pline: u64 = self.head;
+            for _ in 0..index {
+                pline = Line::get_next_a(pline);
+            }
+            let nline: u64 = Line::get_next_a(pline);
+            Line::set_next_a(pline, laddr);
+            Line::set_next_a(laddr, nline);
+            Line::set_prev_a(nline, laddr);
+            Line::set_prev_a(laddr, pline);
+        }
+    }
     pub fn index(&self, i: u64) -> u64 {
         let size = self.size;
         if i >= size {

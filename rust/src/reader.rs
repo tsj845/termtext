@@ -11,6 +11,19 @@ pub use crossterm::cursor::position;
 
 use console::Term as Terminal;
 
+pub fn unfckterminal() -> () {
+    let _ = enable_raw_mode();
+    {
+        let mut out = stdout();
+        let _ = execute!(out, DisableMouseCapture);
+        let _ = execute!(out, PopKeyboardEnhancementFlags);
+        let _ = execute!(out, PopKeyboardEnhancementFlags);
+        let _ = execute!(out, PopKeyboardEnhancementFlags);
+    }
+    let _ = disable_raw_mode();
+    let _ = Terminal::stdout().show_cursor();
+}
+
 pub fn apply_key_ctrl(k: KeyCode) -> io::Result<KeyCode> {
     return Ok(match k {
         KeyCode::Char(c) => KeyCode::Char(match c.to_ascii_lowercase() {
@@ -144,7 +157,7 @@ impl Term {
     #[cfg_attr(do_inline, inline(always))]
     pub fn scroll_down(&mut self) -> () {let _ = command!(self, self.out, ScrollDown(1));}
     #[cfg_attr(do_inline, inline(always))]
-    pub fn set_cur_pos(&mut self, x: u64, y: u64) -> () {let _ = execute!(self.out, MoveTo(x as u16, y as u16));}
+    pub fn set_cur_pos(&mut self, y: u64, x: u64) -> () {let _ = execute!(self.out, MoveTo(x as u16, y as u16));}
     // pub fn set_cur_pos(&mut self, x: u64, y: u64) -> () {let _ = self.term.move_cursor_to(x, y);}
     #[cfg_attr(do_inline, inline(always))]
     pub fn up(&mut self) -> () {let _ = command!(self, self.out, MoveUp(1));}
@@ -181,8 +194,11 @@ impl Term {
     pub fn clear_screen(&mut self) -> () {let _ = command!(self, self.out, Clear(ClearType::All));self.top_left();}
     #[cfg_attr(do_inline, inline(always))]
     pub fn clear_to_end(&mut self) -> () {let _ = command!(self, self.out, Clear(ClearType::FromCursorDown));}
+    // pub fn clear_to_end(&mut self) -> () {let _ = self.out.flush();let _ = self.term.clear_to_end_of_screen();}
     #[cfg_attr(do_inline, inline(always))]
     pub fn clear_line(&mut self) -> () {let _ = execute!(self.out, Clear(ClearType::CurrentLine));print!("\r");}
+    #[cfg_attr(do_inline, inline(always))]
+    pub fn clear_to_newline(&mut self) -> () {let _ = command!(self, self.out, Clear(ClearType::UntilNewLine));}
     // pub unsafe fn read_input_unsf(&mut self) -> io::Result<Input> {
     //     if !self._raw {
     //         return Err(Error::new(ErrorKind::NotConnected, "RAW MODE NOT ENABLED"));
