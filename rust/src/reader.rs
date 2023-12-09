@@ -12,7 +12,8 @@ pub use crossterm::cursor::position;
 use console::Term as Terminal;
 
 pub fn unfckterminal() -> () {
-    let _ = enable_raw_mode();
+    // let _ = enable_raw_mode();
+    let _ = disable_raw_mode();
     {
         let mut out = stdout();
         let _ = execute!(out, DisableMouseCapture);
@@ -20,8 +21,8 @@ pub fn unfckterminal() -> () {
         let _ = execute!(out, PopKeyboardEnhancementFlags);
         let _ = execute!(out, PopKeyboardEnhancementFlags);
     }
-    let _ = disable_raw_mode();
     let _ = Terminal::stdout().show_cursor();
+    let _ = std::process::Command::new("stty").arg("cooked").status();
 }
 
 pub fn apply_key_ctrl(k: KeyCode) -> io::Result<KeyCode> {
