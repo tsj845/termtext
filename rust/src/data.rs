@@ -51,6 +51,7 @@ pub(crate) mod DArea {
         btall,
         eaall,
         btcup,
+        btmsg,
         ttsize,
         ttsaved,
         eacul,
@@ -69,13 +70,15 @@ pub(crate) mod DArea {
     /// the 'all' flag for bot text
     pub const BTAllE:     DArea = 1<<btall as u64;
     /// bot text all
-    pub const BTAll:      DArea = BotText | BTCuP | BTAllE;
+    pub const BTAll:      DArea = BotText | BTCuP | BTAllE | BTMsg;
     /// the 'all' flag for edit area
     pub const EAAllE:     DArea = 1<<eaall as u64;
     /// edit area all
     pub const EAAll:      DArea = EditArea | EACuL | EACuLNext | EACuLNexts | EACULPrev | EAAllE;
     /// bot text cursor position display
     pub const BTCuP:      DArea = 1<<btcup as u64;
+    /// bot text message
+    pub const BTMsg:      DArea = 1<<btmsg as u64;
     /// top text size display
     pub const TTSize:     DArea = 1<<ttsize as u64;
     /// top text saved status

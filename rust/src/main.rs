@@ -8,6 +8,10 @@ fn main() {
     better_panic::Settings::new().verbosity(better_panic::Verbosity::Medium).install();
     let args = env::args().collect::<Vec<String>>();
     let execpath = args[0].clone();
+    if args.contains(&("arbtest".to_owned())) {
+        Controller::arbtest();
+        return;
+    }
     if args.contains(&("unfck".to_owned())) {
         Controller::unfckterminal();
         return;
@@ -21,13 +25,7 @@ fn main() {
         };
         return;
     }
-    // println!("{:?}", std::env::current_dir().unwrap().join(execpath));
-    // return;
-    // if !process::Command::new(execpath).arg("-real").args(&args[1..]).status().unwrap().success() {
-    // // if !process::Command::new(std::env::current_dir().unwrap().join(execpath)).arg("-real").args(&args[1..]).status().unwrap().success() {
-    //     Controller::unfckterminal();
-    // }
     let _ = process::Command::new(std::env::current_dir().unwrap().join(execpath)).arg("-real").args(&args[1..]).spawn().unwrap().wait();
-    println!("OUTER");
+    print!("\n\r");
     Controller::unfckterminal();
 }

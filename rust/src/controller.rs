@@ -43,6 +43,18 @@ pub struct Controller {
     _lastcode: u64,
 }
 
+impl Controller { // static testing functions
+    pub fn arbtest() -> () {
+        let x = LineList::from_iter(vec!["l1".to_owned(), "l2".to_owned()]);
+        let laddr = Line::split_a(x.index(0), 1);
+        // let laddr = line_to_ptr(Line::from_str("l0"));
+        x.insert(laddr, 0);
+        for l in x.clone().into_iter() {
+            println!("{}", Line::to_string_a(l));
+        }
+    }
+}
+
 impl Controller { // small functions that change display config
     /// run after a crash happens where the terminal is not reset properly
     pub fn unfckterminal() -> () {
@@ -151,30 +163,7 @@ impl Controller {
                 self.terminal.clear_to_newline();
                 print!("\r\n");
                 clineindex += 1;
-                // let l = Line::len_a(laddr);
-                // if (tsize + l) >= msize {
-                //     ftext.push_str(&Line::substr_a(laddr, 0, msize-tsize));
-                //     // tsize = msize;
-                //     ftext.push('\r');
-                //     ftext.push('\n');
-                //     break;
-                // } else {
-                //     ftext.push_str(&Line::to_string_a(laddr));
-                //     tsize += l;
-                //     ftext.push('\r');
-                //     ftext.push('\n');
-                // }
             }
-            // ftext.pop();
-            // self.terminal.scroll_down();
-            // self.terminal.clear_to_end();
-            // self.terminal.scroll_up();
-            // self.terminal.up();
-            // self.terminal.set_cur_pos(self.attrs.size.0-1, self.attrs.size.1);
-            // print!("\n");
-            // self.terminal.set_cur_pos(1, 0);
-            // self.terminal.clear_to_newline();
-            // print!("{ftext}");
         }
         if self.cflag(DArea::BotText) {
             self.terminal.set_cur_row(self.attrs.size.0);
@@ -196,13 +185,6 @@ impl Controller {
                 print!("{}", &console::pad_str(BOTTOM_TEXT, self.attrs.size.1 as usize, Alignment::Center, None)[self.attrs.display.bt_left_len..]);
             }
         }
-        // self.terminal.move_cursor_to(0, self.attrs.size.0 as usize)?;
-        // self.terminal.write_all(&[13,10])?;
-        // if debugging(9) {
-        //     print!("\x1b[f{:?}", self.attrs.pos);
-        //     self.terminal.read_key()?;
-        // }
-        // Term::set_cur_pos(self.attrs.pos.1, self.attrs.pos.0 + 1);
         self.terminal.set_cur_pos(self.attrs.pos.0 + 1, self.attrs.pos.1);
         // self.terminal.flush();
         let _ = self.terminal.out.flush();
@@ -219,9 +201,6 @@ impl Controller {
             println!("QUIT FOR REASON: {}", self.endreason);
         }
     }
-    // fn handle_key(&mut self) -> io::Result<InputAction> {
-    //     Ok(NoAction)
-    // }
     fn input_loop(&mut self) -> BRes {
         self.terminal.begin()?;
         'outer: loop {
@@ -231,12 +210,10 @@ impl Controller {
                     if k.kind == KeyEventKind::Release {
                         continue 'outer;
                     }
-                    // if k.state == KeyEventState::CAPS_LOCK {} todo!()
-                    if k.modifiers.contains(KeyModifiers::SHIFT) {
-                        k.code = apply_key_shift(k.code)?;
-                    }
                     if k.modifiers.contains(KeyModifiers::CONTROL) {
                         k.code = apply_key_ctrl(k.code)?;
+                    } else if k.state.contains(KeyEventState::CAPS_LOCK) ^ k.modifiers.contains(KeyModifiers::SHIFT) {
+                        k.code = apply_key_shift(k.code)?;
                     }
                     match (k.code, k.modifiers) {
                         (KeyCode::Char(c), _) => {
@@ -246,6 +223,7 @@ impl Controller {
                             if c == 20 as char { // ^T
                                 if debugging(8) {
                                     self.__dumpcontent()?;
+                                    self.terminal.clear_screen();
                                     self.aflag();
                                     self.render_screen()?;
                                 }
@@ -276,14 +254,14 @@ impl Controller {
                             self.render_screen()?;
                         },
                         (KeyCode::Enter, _) => {
-                            // let ap = self.list.index(self.attrs.frame_start.0 + self.attrs.pos.0 - 1);
-                            // let an = Line::get_next_a(ap);
-                            let ac = line_to_ptr(Line::new());
-                            // Line::set_next_a(ap, ac);
-                            // if an != 0 {
-                            //     Line::set_prev_a(an, ac);
-                            // }
-                            self.list.insert(ac, self.attrs.frame_start.0 + self.attrs.pos.0);
+                            // let ac = line_to_ptr(Line::new());
+                            let ac = Line::split_a(self.activeline, self.attrs.pos.1);
+                            if self.attrs.pos.0 == 0 && self.attrs.pos.1 == 0 {
+                                self.list.insert(ac, 0);
+                                self.activeline = ac;
+                            } else {
+                                self.list.insert(ac, self.attrs.frame_start.0 + self.attrs.pos.0 + 1);
+                            }
                             self._down()?;
                             self.sflag(DArea::BTCuP | DArea::BotText | DArea::EAAll);
                             self.render_screen()?;
@@ -298,6 +276,7 @@ impl Controller {
                                 _ => {unreachable!();},
                                 // _ => unsafe {std::hint::unreachable_unchecked();}
                             };
+                            // return Err(Error::new(ErrorKind::Other, concat!("DEBUGGING AT LINE ",line!())));
                             self.sflag(DArea::BTCuP | DArea::BotText);
                             self.render_screen()?;
                         }
@@ -450,10 +429,8 @@ impl Controller {
             let mut b = true;
             nocur!{self,
                 if self.attrs.pos.0 == 0 {
-                    // let x = self.attrs.pos.1;
                     self.attrs.pos.1 = 0;
                     self.attrs.pref_x = 0;
-                    // Term::left();
                 }
                 else if self.attrs.mov_restrict.up || self.attrs.pos.0 > self.attrs.mov_restrict.up_max {
                     self.activeline = Line::get_prev_a(self.activeline);
@@ -463,11 +440,11 @@ impl Controller {
                         self.attrs.pos.1 = l2;
                     }
                     self.attrs.pos.0 -= 1;
-                    // Term::up();
                 } else {b=false;}
             }
             if b {return BOK;}
         }
+        self.attrs.pref_x = 0;
         if !self.attrs.suppress_move_errs{return BOK;}
         return Err(Error::from(ErrorKind::ConnectionReset));
     }
@@ -478,7 +455,6 @@ impl Controller {
             let mut b = true;
             nocur!{self,
                 if !c1 {
-                    // Term::right_n(l-self.attrs.pos.1);
                     self.attrs.pos.1 = l;
                     self.attrs.pref_x = self.attrs.pos.1;
                 }
@@ -490,10 +466,12 @@ impl Controller {
                         self.attrs.pos.1 = l2;
                     }
                     self.attrs.pos.0 += 1;
-                    // Term::down();
                 } else {b=false;}
             }
             if b {return BOK;}
+        }
+        if !c1 {
+            self.attrs.pref_x = l;
         }
         if !self.attrs.suppress_move_errs{return BOK;}
         return Err(Error::from(ErrorKind::ConnectionReset));
@@ -517,7 +495,6 @@ impl Controller {
             return r;
         }
         if self.attrs.mov_restrict.left || self.attrs.pos.1 > self.attrs.mov_restrict.left_max {self.attrs.pos.1-=1;
-            // Term::left();
             self.attrs.pref_x = self.attrs.pos.1;
         }
         BOK
@@ -541,7 +518,6 @@ impl Controller {
             return r;
         }
         if self.attrs.mov_restrict.right || self.attrs.pos.1 < self.attrs.mov_restrict.right_max || true {self.attrs.pos.1+=1;
-            // Term::right();
             self.attrs.pref_x = self.attrs.pos.1;
         }
         BOK
@@ -560,6 +536,8 @@ impl Controller {
 impl Controller {
     /// todo
     fn _msg(&mut self, msg: &str) -> BRes {
+        self.attrs.display.msg = msg.to_owned();
+        self.sflag(DArea::BTMsg);
         return BOK;
     }
     fn __dumpcontent(&mut self) -> BRes {

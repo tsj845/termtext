@@ -58,7 +58,7 @@ impl LineList {
                 write(saddr as *mut u64, laddr);
                 return;
             }
-            if index == self.size {
+            if index == self.size-1 {
                 if self.tail != 0 {
                     Line::set_next_a(self.tail, laddr);
                     Line::set_prev_a(laddr, self.tail);
@@ -71,8 +71,15 @@ impl LineList {
                 return;
             }
             let mut pline: u64 = self.head;
-            for _ in 0..index {
-                pline = Line::get_next_a(pline);
+            if index > (self.size-1)/2 {
+                pline = self.tail;
+                for _ in 0..(self.size-index-2) {
+                    pline = Line::get_prev_a(pline);
+                }
+            } else {
+                for _ in 0..index {
+                    pline = Line::get_next_a(pline);
+                }
             }
             let nline: u64 = Line::get_next_a(pline);
             Line::set_next_a(pline, laddr);
@@ -192,12 +199,46 @@ impl Line {
 
 // str manipulation
 impl Line {
+    /// splits this line in place using the given index, returns the address of a new line containing all characters after the split
+    pub fn split_a(laddr: u64, index: u64) -> u64 {
+        unsafe {
+            let ptr: u64 = Line::get_ptr_a(laddr);
+            let len: u64 = Line::len_a(laddr);
+            if ptr == 0 || len == 0 {return line_to_ptr(Line::new());}
+            // all content should be in the new line
+            if index == 0 {
+                let naddr: u64 = line_to_ptr(Line::new());
+                // copy len, cap, and ptr to the new line
+                Line::set_cap_a(naddr, Line::cap_a(laddr));
+                Line::set_len_a(naddr, len);
+                Line::set_ptr_a(naddr, ptr);
+                // zero the len, cap, and ptr of this line
+                Line::set_cap_a(laddr, 0);
+                Line::set_len_a(laddr, 0);
+                Line::set_ptr_a(laddr, 0);
+                return naddr;
+            }
+            // all content should remain in this line
+            if index >= len {
+                return line_to_ptr(Line::new());
+            }
+            // if execution reaches this point, then a non-trivial split must be performed
+            Line::set_len_a(laddr, len-index);
+            let mut s = len - index;
+            s = match s % 2 == 0 {true=>s,_=>(s+1)}; // ensure `n` has 2-byte alignment
+            let nptr: u64 = Line::alloc(s, 2) as u64;
+            for a in 0..(len-index) {
+                write((nptr + a) as *mut u8, read((ptr + a + index) as *const u8));
+            }
+            return line_to_ptr(Line {nextln:0,prevln:0,ptr:nptr,cap:s,len:len-index,line_num:0});
+        }
+    }
     /// CHANGES TO THE RETURNED `String` WILL NOT BE RELFLECTED IN THE `Line`
     pub fn to_string_a(laddr: u64) -> String {
         unsafe {
             let ptr: *const u8 = Line::get_ptr_a(laddr) as *const u8; // get the pointer
             let len: usize = Line::len_a(laddr) as usize; // get length
-            if len == 0 {return String::new();} // guard
+            if len == 0 || (ptr as u64) == 0 {return String::new();} // guard
             String::from_iter(std::slice::from_raw_parts::<u8>(ptr, len).into_iter().map(|n:&u8| (*n) as char))
         }
     }
@@ -334,6 +375,9 @@ impl Line {
     }
     pub fn new_with_np(nextln: u64, prevln: u64) -> Line {Line {nextln, prevln, ptr: 0, cap: 0, len: 0, line_num: 0}}
     pub fn from_str_with_np(nextln: u64, prevln: u64, s: &str) -> Line {
+        if s.len() == 0 {
+            return Line::new();
+        }
         let n: String = s.to_owned();
         let len: u64 = n.len() as u64;
         let ptr: *mut u8 = Line::alloc(len, 2);
