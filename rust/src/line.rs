@@ -17,8 +17,6 @@ pub struct Line {
     cap: u64,
     /// this line's length
     len: u64,
-    /// the line number
-    line_num: u64
 }
 
 #[derive(Clone)]
@@ -145,7 +143,6 @@ impl Line {
     pub fn len(&self) -> u64 {self.len}
     pub fn get_next(&self) -> u64 {self.nextln}
     pub fn get_prev(&self) -> u64 {self.prevln}
-    pub fn get_linenum(&self) -> u64 {self.line_num}
     pub fn get_addr(&self) -> u64 {(self as *const Line) as u64}
     // gets with Line obj address
     pub fn cap_a(laddr: u64) -> u64 {unsafe {read((laddr + 24) as *const u64)}}
@@ -171,7 +168,7 @@ impl Line {
     }
 
     fn resize(laddr: u64, mut n: u64) -> u64 {
-        n = match n % 2 == 0 {true=>n,_=>(n+1)}; // ensure `n` has 2-byte alignment
+        n = match n % 2 == 0 {true=>n,_=>n+1}; // ensure `n` has 2-byte alignment
         let il: u64 = Line::len_a(laddr);
         let ic: u64 = Line::cap_a(laddr);
         if n < il { // ensure data is not lost
@@ -225,12 +222,12 @@ impl Line {
             // if execution reaches this point, then a non-trivial split must be performed
             Line::set_len_a(laddr, len-index);
             let mut s = len - index;
-            s = match s % 2 == 0 {true=>s,_=>(s+1)}; // ensure `n` has 2-byte alignment
+            s = match s % 2 == 0 {true=>s,_=>s+1}; // ensure `n` has 2-byte alignment
             let nptr: u64 = Line::alloc(s, 2) as u64;
             for a in 0..(len-index) {
                 write((nptr + a) as *mut u8, read((ptr + a + index) as *const u8));
             }
-            return line_to_ptr(Line {nextln:0,prevln:0,ptr:nptr,cap:s,len:len-index,line_num:0});
+            return line_to_ptr(Line {nextln:0,prevln:0,ptr:nptr,cap:s,len:len-index});
         }
     }
     /// CHANGES TO THE RETURNED `String` WILL NOT BE RELFLECTED IN THE `Line`
@@ -367,13 +364,13 @@ impl Line {
         }
     }
     // various constructors
-    pub fn new() -> Line {Line {nextln: 0, prevln: 0, ptr: 0, cap: 0, len: 0, line_num: 0}}
+    pub fn new() -> Line {Line {nextln: 0, prevln: 0, ptr: 0, cap: 0, len: 0}}
     pub fn from_addr(addr: u64) -> Line {
         unsafe {
             return read(addr as *const Line);
         }
     }
-    pub fn new_with_np(nextln: u64, prevln: u64) -> Line {Line {nextln, prevln, ptr: 0, cap: 0, len: 0, line_num: 0}}
+    pub fn new_with_np(nextln: u64, prevln: u64) -> Line {Line {nextln, prevln, ptr: 0, cap: 0, len: 0}}
     pub fn from_str_with_np(nextln: u64, prevln: u64, s: &str) -> Line {
         if s.len() == 0 {
             return Line::new();
@@ -389,7 +386,7 @@ impl Line {
                 i += 1;
             }
         }
-        Line {nextln, prevln, ptr: ptr as u64, cap, len, line_num: 0}
+        Line {nextln, prevln, ptr: ptr as u64, cap, len}
     }
     pub fn from_str(s: &str) -> Line {Line::from_str_with_np(0, 0, s)}
 }
@@ -424,7 +421,7 @@ impl Drop for Line {
 
 impl std::fmt::Debug for Line {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Line").field("nextln", &format!("{:#x}",self.nextln)).field("prevln", &format!("{:#x}",self.prevln)).field("ptr", &format!("{:#x}",self.ptr)).field("cap", &self.cap).field("len", &self.len).field("line_num", &self.line_num).finish()
+        f.debug_struct("Line").field("nextln", &format!("{:#x}",self.nextln)).field("prevln", &format!("{:#x}",self.prevln)).field("ptr", &format!("{:#x}",self.ptr)).field("cap", &self.cap).field("len", &self.len).finish()
     }
 }
 
