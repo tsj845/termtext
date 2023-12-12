@@ -19,6 +19,8 @@ const BOK: BRes = Ok(());
 const MINROWS: u64 = 10;
 const MINCOLS: u64 = 50;
 
+const BOTTOM_MARGIN: u64 = 5;
+
 pub struct Controller {
     pub list: LineList,
     pub meta: FileMeta,
@@ -126,7 +128,7 @@ impl Controller {
         }
         if self.cflag(DArea::EditArea) {
             let mut clineindex: u64 = 1; // set to one because the terminal.down() call before the EditArea check puts the cursor at row 1 col 0
-            let clinemax: u64 = self.attrs.size.0 - 3; // -3 instead of -2 because the index is inclusive
+            let clinemax: u64 = self.attrs.size.0 - BOTTOM_MARGIN + 1;
             let maxwidth: usize = self.attrs.size.1 as usize; // cache so there aren't a lot of pointer derefs + readability
             for laddr in self.list.clone().into_iter() {
                 if Line::get_linenum_a(laddr) < self.attrs.frame_start.1 {continue;} // go to start of lines that will be drawn
@@ -146,12 +148,15 @@ impl Controller {
             self.terminal.set_cur_row(self.attrs.size.0);
             if self.cflag(DArea::BTCuP) {
                 let lw = self.attrs.display.bt_left_len;
-                if lw > 0 {
-                    print!("{}", String::from_iter(std::iter::repeat(' ').take(lw)));
-                    self.terminal.reset_col();
-                }
-                let y = format!("{:?}", self.attrs.pos);
+                // if lw > 0 {
+                //     print!("{}", String::from_iter(std::iter::repeat(' ').take(lw)));
+                //     self.terminal.reset_col();
+                // }
+                let y = format!("{:?}", (self.attrs.pos.0 + self.attrs.frame_start.0, self.attrs.pos.1 + self.attrs.frame_start.1));
                 print!("{}", &y);
+                if lw > y.len() {
+                    print!("{}", String::from_iter(std::iter::repeat(' ').take(lw - y.len())));
+                }
                 self.attrs.display.bt_left_len = y.len();
             }
             if self.cflag(DArea::BTAllE) {
@@ -274,7 +279,7 @@ impl Controller {
         self.attrs.size = s;
         self.attrs.pref_x = 0;
         self._init()?;
-        if debugging(6) {return BOK;}
+        if debugging(6) {self.terminal.cleanup()?}
         // run
         let r = catch_unwind(AssertUnwindSafe(|| self.input_loop()));
         match r {
@@ -308,7 +313,43 @@ macro_rules! nocur {
 }
 
 impl Controller {
+    fn _fscrollup(&mut self) -> BRes {
+        self.attrs.frame_start.0 -= 1;
+        self.cflag(DArea::EAAll);
+        self.sflag(DArea::BTAll | DArea::TTAll);
+        self.terminal.scroll_down();
+        self.terminal.clear_to_newline();
+        self.activeline = Line::get_prev_a(self.activeline);
+        let l = Line::len_a(self.activeline);
+        self.attrs.pos.1 = self.attrs.pref_x;
+        if self.attrs.pos.1 > l {
+            self.attrs.pos.1 = l;
+        }
+        self.terminal.set_cur_pos(self.attrs.size.0 - BOTTOM_MARGIN + 2, 0);
+        self.terminal.clear_line();
+        self.terminal.set_cur_row(1);
+        print!("{}", Line::to_string_a(self.activeline));
+        self.render_screen()
+    }
+    fn _fscrolldown(&mut self) -> BRes {
+        self.attrs.frame_start.0 += 1;
+        self.cflag(DArea::EAAll); // ensure the edit area isn't redrawn after
+        self.sflag(DArea::BTAll | DArea::TTAll); // redraw everything else
+        self.terminal.scroll_up();
+        self.activeline = Line::get_next_a(self.activeline);
+        let l = Line::len_a(self.activeline);
+        self.attrs.pos.1 = self.attrs.pref_x;
+        if self.attrs.pos.1 > l {
+            self.attrs.pos.1 = l;
+        }
+        print!("\r{}", Line::to_string_a(self.activeline));
+        self.terminal.clear_to_end();
+        self.render_screen()
+    }
     fn _up(&mut self) -> BRes {
+        if self.attrs.pos.0 == 0 && self.attrs.frame_start.0 > 0 {
+            return self._fscrollup();
+        }
         if self.attrs.pos.0 != 0 || self.attrs.pos.1 > 0 {
             let mut b = true;
             nocur!{self,
@@ -333,9 +374,12 @@ impl Controller {
         return Err(Error::from(ErrorKind::ConnectionReset));
     }
     fn _down(&mut self) -> BRes {
-        let c1 = self.attrs.pos.0 < self.list.size()-1;
+        let c1 = self.attrs.pos.0 + self.attrs.frame_start.0 < self.list.size()-1;
+        if self.attrs.pos.0 >= (self.attrs.size.0-BOTTOM_MARGIN) && c1 {
+            return self._fscrolldown();
+        }
         let l = Line::len_a(self.activeline);
-        if self.attrs.pos.0 < (self.attrs.size.0-4) && (c1 || self.attrs.pos.1 < l) {
+        if self.attrs.pos.0 < (self.attrs.size.0-BOTTOM_MARGIN) && c1 {
             let mut b = true;
             nocur!{self,
                 if !c1 {
@@ -354,9 +398,8 @@ impl Controller {
             }
             if b {return BOK;}
         }
-        if !c1 {
-            self.attrs.pref_x = l;
-        }
+        self.attrs.pos.1 = l;
+        self.attrs.pref_x = l;
         if !self.attrs.suppress_move_errs{return BOK;}
         return Err(Error::from(ErrorKind::ConnectionReset));
     }
