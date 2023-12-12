@@ -1,8 +1,5 @@
 extern crate console;
-// extern crate chrono;
 extern crate crossterm;
-extern crate once_cell;
-extern crate lazy_static;
 mod reader;
 mod statics;
 use statics::*;

@@ -1,4 +1,3 @@
-// use console::{Term, measure_text_width, Alignment, Key};
 use console::{measure_text_width, Alignment};
 use crossterm::event::read as read_input;
 #[allow(unused_imports)]
@@ -8,7 +7,6 @@ use std::fs::{File, write};
 use std::io;
 use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use data::*;
-// use chrono::{};
 
 use crate::*;
 use crate::reader::*;
@@ -20,16 +18,6 @@ const BOK: BRes = Ok(());
 
 const MINROWS: u64 = 10;
 const MINCOLS: u64 = 50;
-
-// enum InputAction {
-//     NoAction,
-//     QuitOk(String),
-//     QuitErr(String),
-//     Refresh,
-//     Save,
-//     DumpContent,
-// }
-// use InputAction::{NoAction,QuitOk,QuitErr,Refresh,Save,DumpContent};
 
 pub struct Controller {
     pub list: LineList,
@@ -47,7 +35,6 @@ impl Controller { // static testing functions
     pub fn arbtest() -> () {
         let x = LineList::from_iter(vec!["l1".to_owned(), "l2".to_owned()]);
         let laddr = Line::split_a(x.index(0), 1);
-        // let laddr = line_to_ptr(Line::from_str("l0"));
         x.insert(laddr, 0);
         for l in x.clone().into_iter() {
             println!("{}", Line::to_string_a(l));
@@ -89,16 +76,11 @@ impl Controller {
         }
         if debugging(63) {
             x.terminal.clear_line();
-            // println!("{}", x.meta.fmt_last_modified());
-            // aflag(&mut x.attrs.display.redisplay);
-            // println!("{:#X}", x.attrs.display.redisplay);
-            // x.attrs.display.redisplay = 0;
             x.endflag = true;
             x.endreason = "FLAG 63".to_owned();
             x.waserr = true;
             x.terminal.term.read_key()?;
         }
-        // x.terminal.end()?;
         return Ok(x);
     }
     /// saves modified file content, EXTREMELY SLOW
@@ -139,20 +121,15 @@ impl Controller {
             }
             print!("{}", &console::pad_str(&(self.meta.title.clone()+"    "+&self.attrs.display.lastmod), self.attrs.size.1 as usize, Alignment::Center, None)[self.attrs.display.tt_left_len..]);
             println!("\x1b[D\x1b[38;2;150;150;150m|\x1b[0m\r")
-            // println!("{}\r", &console::pad_str(&(self.meta.title.clone()+"    "+&self.attrs.display.lastmod), self.attrs.size.1 as usize, Alignment::Center, None)[self.attrs.display.tt_left_len..]);
         } else {
             self.terminal.down();
         }
         if self.cflag(DArea::EditArea) {
-            // let msize = (self.attrs.size.0-2) * self.attrs.size.1;
-            // let mut tsize: u64 = 0;
-            // let mut ftext: String = String::new();
             let mut clineindex: u64 = 1; // set to one because the terminal.down() call before the EditArea check puts the cursor at row 1 col 0
             let clinemax: u64 = self.attrs.size.0 - 3; // -3 instead of -2 because the index is inclusive
             let maxwidth: usize = self.attrs.size.1 as usize; // cache so there aren't a lot of pointer derefs + readability
             for laddr in self.list.clone().into_iter() {
                 if Line::get_linenum_a(laddr) < self.attrs.frame_start.1 {continue;} // go to start of lines that will be drawn
-                // if tsize >= msize {break;}
                 if clineindex > clinemax {break;}
                 let fulstr: String = Line::to_string_a(laddr);
                 if measure_text_width(&fulstr) > maxwidth {
@@ -167,16 +144,13 @@ impl Controller {
         }
         if self.cflag(DArea::BotText) {
             self.terminal.set_cur_row(self.attrs.size.0);
-            // print!("\x1b[{};1f", self.attrs.size.0);
             if self.cflag(DArea::BTCuP) {
                 let lw = self.attrs.display.bt_left_len;
                 if lw > 0 {
                     print!("{}", String::from_iter(std::iter::repeat(' ').take(lw)));
                     self.terminal.reset_col();
-                    // self.terminal.set_cur_row(self.attrs.size.0);
                 }
                 let y = format!("{:?}", self.attrs.pos);
-                // let y = format!("{:?} LKC: {}", self.attrs.pos, self._lastcode);
                 print!("{}", &y);
                 self.attrs.display.bt_left_len = y.len();
             }
@@ -186,7 +160,6 @@ impl Controller {
             }
         }
         self.terminal.set_cur_pos(self.attrs.pos.0 + 1, self.attrs.pos.1);
-        // self.terminal.flush();
         let _ = self.terminal.out.flush();
         self.terminal.show_cursor();
         return BOK;
@@ -244,28 +217,16 @@ impl Controller {
                                 self.attrs.display.bt_left_len = 0;
                                 self.render_screen()?;
                                 continue 'outer;
-                                // self.terminal.save_raw();
-                                // self.terminal.term.clear_screen()?;
-                                // print!("POS: {:?}\n", self.attrs.pos);
-                                // self.terminal.term.read_key()?;
-                                // self.terminal.restore_raw();
                             }
                             self.sflag(DArea::BTCuP | DArea::BotText | DArea::EditArea | DArea::EACuL);
                             self.render_screen()?;
                         },
                         (KeyCode::Enter, _) => {
                             let ac = Line::split_a(self.activeline, self.attrs.pos.1);
-                            // if self.attrs.pos.0 == 0 && self.attrs.pos.1 == 0 {
-                            //     self.list.insert(ac, 0);
-                            //     self.activeline = ac;
-                            // } else {
-                            //     self.list.insert(ac, self.attrs.frame_start.0 + self.attrs.pos.0 + 1);
-                            // }
                             self.list.insert(ac, self.attrs.frame_start.0 + self.attrs.pos.0 + 1);
                             self._down()?;
                             self.sflag(DArea::BTCuP | DArea::BotText | DArea::EAAll);
                             self.render_screen()?;
-                            // return Err(Error::new(ErrorKind::Other, concat!("DEBUGGING AT LINE ",line!())));
                         },
                         (KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right, _) => {
                             match k.code {
@@ -274,9 +235,7 @@ impl Controller {
                                 KeyCode::Left => {self._left()?;},
                                 KeyCode::Right => {self._right()?;},
                                 _ => {unreachable!();},
-                                // _ => unsafe {std::hint::unreachable_unchecked();}
                             };
-                            // return Err(Error::new(ErrorKind::Other, concat!("DEBUGGING AT LINE ",line!())));
                             self.sflag(DArea::BTCuP | DArea::BotText);
                             self.render_screen()?;
                         }
@@ -314,30 +273,9 @@ impl Controller {
         }
         self.attrs.size = s;
         self.attrs.pref_x = 0;
-        // self.attrs.pref_x = self.attrs.size.1;
         self._init()?;
         if debugging(6) {return BOK;}
         // run
-        // loop {
-        //     if self.endflag {
-        //         self.end();
-        //         break;
-        //     }
-        //     match self.handle_key()? {
-        //         NoAction => {},
-        //         QuitOk(x) => {self.endflag=true;self.endreason=x;},
-        //         QuitErr(x) => {self.endflag=true;self.endreason=x;self.waserr=true;},
-        //         Refresh => {self.render_screen()?;},
-        //         Save => {self.save();},
-        //         DumpContent => {
-        //             if debugging(8) {
-        //                 self.__dumpcontent()?;
-        //                 self.render_screen()?;
-        //             }
-        //         },
-        //     }
-        // }
-        // self.terminal.end()?;
         let r = catch_unwind(AssertUnwindSafe(|| self.input_loop()));
         match r {
             Ok(s) => {self.end();s},

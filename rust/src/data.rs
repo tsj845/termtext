@@ -18,9 +18,6 @@ pub struct FileMeta {
         let rminutes = rhours % 3600;
         let minutes: u64 = rminutes / 60;
         let seconds: u64 = rminutes % 60;
-        // if debugging(63) {
-        //     return format!("({}:{})y\n({}:{})w\n({}:{})d\n({}:{})h\n({}:{})m\n({})s", last_modified, years, rweeks, weeks, rdays, days, rhours, hours, rminutes, minutes, seconds);
-        // }
         return format!("{}y-{}w-{}d-{}h-{}m-{}s", years, weeks, days, hours, minutes, seconds);
     }
 }

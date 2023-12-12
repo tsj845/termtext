@@ -3,7 +3,7 @@ extern crate crossterm;
 
 use rust::*;
 use std::{env, process};
-use std::fs;
+// use std::fs;
 
 fn main() {
     better_panic::Settings::new().verbosity(better_panic::Verbosity::Medium).install();
