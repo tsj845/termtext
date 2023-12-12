@@ -71,19 +71,21 @@ impl LineList {
             let mut pline: u64 = self.head;
             if index > (self.size-1)/2 {
                 pline = self.tail;
-                for _ in 0..(self.size-index-2) {
+                for _ in 0..(self.size-index-1) {
                     pline = Line::get_prev_a(pline);
                 }
             } else {
-                for _ in 0..index {
+                for _ in 0..(index-1) {
                     pline = Line::get_next_a(pline);
                 }
             }
             let nline: u64 = Line::get_next_a(pline);
             Line::set_next_a(pline, laddr);
             Line::set_next_a(laddr, nline);
-            Line::set_prev_a(nline, laddr);
             Line::set_prev_a(laddr, pline);
+            if nline != 0 {
+                Line::set_prev_a(nline, laddr);
+            }
         }
     }
     pub fn index(&self, i: u64) -> u64 {

@@ -254,14 +254,14 @@ impl Controller {
                             self.render_screen()?;
                         },
                         (KeyCode::Enter, _) => {
-                            // let ac = line_to_ptr(Line::new());
                             let ac = Line::split_a(self.activeline, self.attrs.pos.1);
-                            if self.attrs.pos.0 == 0 && self.attrs.pos.1 == 0 {
-                                self.list.insert(ac, 0);
-                                self.activeline = ac;
-                            } else {
-                                self.list.insert(ac, self.attrs.frame_start.0 + self.attrs.pos.0 + 1);
-                            }
+                            // if self.attrs.pos.0 == 0 && self.attrs.pos.1 == 0 {
+                            //     self.list.insert(ac, 0);
+                            //     self.activeline = ac;
+                            // } else {
+                            //     self.list.insert(ac, self.attrs.frame_start.0 + self.attrs.pos.0 + 1);
+                            // }
+                            self.list.insert(ac, self.attrs.frame_start.0 + self.attrs.pos.0 + 1);
                             self._down()?;
                             self.sflag(DArea::BTCuP | DArea::BotText | DArea::EAAll);
                             self.render_screen()?;
@@ -290,62 +290,6 @@ impl Controller {
         self.terminal.cleanup()?;
         Ok(())
     }
-    // fn handle_input(&mut self) -> io::Result<InputAction> {
-    //     let input: Input = self.terminal.read_input()?;
-    //     match input {
-    //         KeyIn(mut k) => {
-    //             match k {
-    //                 Key::Tab => {k=Key::Char('\t');},
-    //                 Key::Enter => {k=Key::Char('\n');},
-    //                 _ => {},
-    //             };
-    //             match k {
-    //                 Key::Char(c) => {
-    //                     let oreg = self.attrs.display.redisplay;
-    //                     self.aflag();
-    //                     if c == 0 as char {return Ok(QuitErr("NULL KEY".to_owned()));}
-    //                     if c == 17 as char {return Ok(QuitErr("FORCE QUIT".to_owned()));}
-    //                     if c == 19 as char {return Ok(Save);}
-    //                     if c == 24 as char {return Ok(QuitOk("CONTROL X".to_owned()));}
-    //                     if c == 20 as char {return Ok(DumpContent);}
-    //                     if c == 18 as char {self.aflag();
-    //                         return Ok(Refresh);
-    //                         // return Err(Error::new(ErrorKind::InvalidInput, "CTRL-R"));
-    //                     }
-    //                     self.attrs.display.redisplay = oreg;
-    //                     self._lastcode = c as u64;
-    //                     self.sflag(DArea::EditArea);
-    //                     self.sflag(DArea::BotText);
-    //                     self.sflag(DArea::BTAll);
-    //                     return Ok(Refresh);
-    //                 },
-    //                 _ => {
-    //                     self.sflag(DArea::BotText);
-    //                     self.sflag(DArea::BTCuP);
-    //                     match k {
-    //                         Key::ArrowUp => {self._lastcode=201;self._up()?},
-    //                         Key::ArrowDown => {self._lastcode=202;self._down()?},
-    //                         Key::ArrowLeft => {self._lastcode=203;self._left()?},
-    //                         Key::ArrowRight => {self._lastcode=204;self._right()?},
-    //                         Key::Del | Key::Backspace => {self.sflag(DArea::EditArea);self.sflag(DArea::BotText);self._delete()?},
-    //                         Key::Alt | Key::Shift => {
-    //                             if k == Key::Alt {
-    //                                 self._lastcode = 257;
-    //                             } else {
-    //                                 self._lastcode = 258;
-    //                             }
-    //                             return Ok(Refresh);
-    //                         },
-    //                         _ => {self.cflag(DArea::BTCuP);self.cflag(DArea::BotText);}
-    //                     };
-    //                     self.sflag(DArea::BotText);
-    //                     return Ok(Refresh);
-    //                 }
-    //             }
-    //         },
-    //         _ => {return Ok(NoAction);}
-    //     };
-    // }
     fn _init(&mut self) -> io::Result<()> {
         self.terminal.begin()?;
         self.terminal.clear_screen();
@@ -403,6 +347,8 @@ impl Controller {
     fn test_readback(&mut self) -> () {
         self.terminal.save_raw();
         println!("TESTING");
+        println!("POS: {:?}", self.attrs.pos);
+        println!("ACTIVELINE: {:#x}", self.activeline);
         for addr in self.list.clone().into_iter() {
             println!("READBACK ({:x}, {})", addr, Line::len_a(addr));
             println!("READBACK N/P ({:x}, {:x})", Line::get_prev_a(addr), Line::get_next_a(addr));

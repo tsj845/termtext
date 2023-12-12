@@ -3,6 +3,7 @@ extern crate crossterm;
 
 use rust::*;
 use std::{env, process};
+use std::fs;
 
 fn main() {
     better_panic::Settings::new().verbosity(better_panic::Verbosity::Medium).install();
@@ -25,7 +26,9 @@ fn main() {
         };
         return;
     }
-    let _ = process::Command::new(std::env::current_dir().unwrap().join(execpath)).arg("-real").args(&args[1..]).spawn().unwrap().wait();
+    let _ = process::Command::new(std::env::current_dir().unwrap().join(execpath)).arg("-real").args(&args[1..])
+    // .stderr(fs::OpenOptions::new().write(true).truncate(true).open("dbgout.txt").unwrap())
+    .spawn().unwrap().wait();
     print!("\n\r");
     Controller::unfckterminal();
 }
