@@ -58,13 +58,13 @@ impl Controller {
     pub fn from_file(title: String, path: String) -> io::Result<Self> {
         let mut x = Self {
             list: LineList::from_iter(std::io::BufReader::new(File::open(&path).unwrap()).lines()),
-            meta: FileMeta { title, path: path.clone(), histpath: "".to_owned(), last_modified: std::fs::metadata(&path).unwrap().modified().unwrap(), escctrl: false },
+            meta: FileMeta { title, path: path.clone(), histpath: "".to_owned(), last_modified: std::fs::metadata(&path).unwrap().modified().unwrap() },
             activeline: 0,
             endflag: false,
             waserr: false,
             endreason: String::new(),
             terminal: Term::new(),
-            attrs: Attrs { size: (0,0), frame_start: (0,0), pos: (0,0), pref_x: 0, mov_restrict: _MoveRestrict::new(), suppress_move_errs: false, display: _Display::new() },
+            attrs: Attrs { size: (0,0), frame_start: (0,0), pos: (0,0), pref_x: 0, mov_restrict: _MoveRestrict::new(), suppress_move_errs: false, escctrl: false, display: _Display::new() },
             _lastcode: 0,
         };
         // x.terminal.begin()?;
@@ -149,22 +149,13 @@ impl Controller {
             // if !self.cflag(DArea::BTMsg) {
             //     self._reset_msg()?;
             // }
-            // self.terminal.show_cursor();
             self.terminal.set_cur_pos(self.attrs.size.0 - 2, 0);
-            // print!("{}", &console::pad_str("TEST MESSAGE", self.attrs.size.1 as usize, Alignment::Center, None));
             print!("{}", &console::pad_str(&self.attrs.display.msg, self.attrs.size.1 as usize, Alignment::Center, None));
             self.terminal.clear_to_newline();
             self.terminal.reset_col();
-            // self.terminal.out.flush()?;
-            // read_input()?;
-            // self.terminal.hide_cursor();
             self.terminal.set_cur_row(self.attrs.size.0);
             if self.cflag(DArea::BTCuP) {
                 let lw = self.attrs.display.bt_left_len;
-                // if lw > 0 {
-                //     print!("{}", String::from_iter(std::iter::repeat(' ').take(lw)));
-                //     self.terminal.reset_col();
-                // }
                 let y = format!("{:?}", (self.attrs.pos.0 + self.attrs.frame_start.0, self.attrs.pos.1 + self.attrs.frame_start.1));
                 print!("{}", &y);
                 if lw > y.len() {
@@ -201,22 +192,30 @@ impl Controller {
                     if k.kind == KeyEventKind::Release {
                         continue 'outer;
                     }
-                    if k.modifiers.contains(KeyModifiers::CONTROL) || self.meta.escctrl {
-                        if self.meta.escctrl { // reset the prompt
+                    if k.modifiers.contains(KeyModifiers::CONTROL) || self.attrs.escctrl {
+                        if self.attrs.escctrl { // reset the prompt
                             let x = self.attrs.display.redisplay;
                             self.attrs.display.redisplay = 0;
                             self._reset_msg()?;
                             self.render_screen()?;
                             self.attrs.display.redisplay = x;
                         }
-                        self.meta.escctrl = false;
+                        self.attrs.escctrl = false;
                         k.code = apply_key_ctrl(k.code)?;
                     } else if k.state.contains(KeyEventState::CAPS_LOCK) ^ k.modifiers.contains(KeyModifiers::SHIFT) {
                         k.code = apply_key_shift(k.code)?;
                     }
+                    match k.code { // the ESC key allowing arbitrary control characters means that some behavior needs to be synced, eg. CTRL-M is registered as the Enter key through keyboard input, so the escape sequence should match that behavior
+                        KeyCode::Char(c) => match c as u8 {
+                            9 => k.code = KeyCode::Tab,
+                            13 => k.code = KeyCode::Enter,
+                            _=>{},
+                        }
+                        _ => {},
+                    };
                     match (k.code, k.modifiers) {
                         (KeyCode::Esc, _) => {
-                            self.meta.escctrl = true;
+                            self.attrs.escctrl = true;
                             self._msg("ESC CTRL")?;
                             self.render_screen()?;
                             continue 'outer;
@@ -225,7 +224,10 @@ impl Controller {
                             if c == 17 as char {self.waserr=true;self.endreason="FORCE QUIT".to_owned();break 'outer;} // ^Q
                             if c == 24 as char {self.endreason="CONTROL X".to_owned();break 'outer;} // ^X
                             if c == 19 as char {self.save();continue 'outer;} // ^S
-                            if c == 21 as char {self._msg("MODE SWITCH NOT IMPLEMENTED YET")?;self.sflag(DArea::BTAll);self.render_screen()?;continue 'outer;} // ^U
+                            if c == 21 as char { // ^U
+                                self._mode_switch()?;
+                                continue 'outer;
+                            }
                             if c == 20 as char { // ^T
                                 if debugging(8) {
                                     self.__dumpcontent()?;
@@ -256,7 +258,12 @@ impl Controller {
                                 self.render_screen()?;
                                 continue 'outer;
                             }
-                            if (c as u8) < 32u8 {
+                            if c == 11 as char { // ^K
+                                self._msg("COMMAND CHORDS NOT IMPL'D YET")?;
+                                self.render_screen()?;
+                                continue 'outer;
+                            }
+                            if (c as u8) < 32u8 { // unmapped control keys
                                 self._msg("INVALID CTRL SEQ")?;
                                 self.render_screen()?;
                                 continue 'outer;
@@ -501,6 +508,77 @@ impl Controller {
 }
 
 impl Controller {
+    fn _mode_switch(&mut self) -> BRes {
+        match self._prompt("M> ") {
+            Ok(s) => {
+                if s.eq_ignore_ascii_case("insert") || s.eq_ignore_ascii_case("i") {
+                    self._msg("UNAVAILABLE")?;
+                } else {
+                    self._msg("INVALID MODE NAME")?;
+                }
+                self.render_screen()?;
+            },
+            Err(e) => {
+                if e.kind() != ErrorKind::Other { // propagate actual io errors
+                    io::Result::<()>::Err(e).unwrap();
+                }
+            },
+        };
+        Ok(())
+    }
+    fn _prompt(&mut self, p: &str) -> io::Result<String> {
+        self.terminal.set_cur_pos(self.attrs.size.0 - 2, 0);
+        self.terminal.clear_line();
+        print!("{p}");
+        let _ = self.terminal.out.flush();
+        let mut build = String::new();
+        loop {
+            let input = read_input()?;
+            match input {
+                Event::Key(mut k) => {
+                    if k.kind == KeyEventKind::Release {
+                        continue;
+                    }
+                    if k.modifiers.contains(KeyModifiers::CONTROL) {
+                        k.code = apply_key_ctrl(k.code)?;
+                    } else if k.state.contains(KeyEventState::CAPS_LOCK) ^ k.modifiers.contains(KeyModifiers::SHIFT) {
+                        k.code = apply_key_shift(k.code)?;
+                    }
+                    match k.code {
+                        KeyCode::Char(c) => {
+                            if c < 32 as char {
+                                //
+                            }
+                            build.push(c);
+                            print!("{c}");
+                            let _ = self.terminal.out.flush();
+                        },
+                        KeyCode::Delete | KeyCode::Backspace => {
+                            if build.len() == 0 {
+                                continue;
+                            }
+                            build.pop();
+                            self.terminal.left();
+                            self.terminal.clear_to_newline();
+                            let _ = self.terminal.out.flush();
+                        },
+                        KeyCode::Enter => {
+                            self.terminal.set_cur_pos(self.attrs.pos.0, self.attrs.pos.1);
+                            let _ = self.terminal.out.flush();
+                            return Ok(build);
+                        },
+                        KeyCode::Esc => {
+                            self.terminal.set_cur_pos(self.attrs.pos.0, self.attrs.pos.1);
+                            let _ = self.terminal.out.flush();
+                            return Err(Error::other(""));
+                        }
+                        _ => {},
+                    }
+                },
+                _ => {},
+            }
+        }
+    }
     fn _msg(&mut self, msg: &str) -> BRes {
         self.attrs.display.msg = format!("[ {msg} ]");
         self.sflag(DArea::BotText | DArea::BTMsg);

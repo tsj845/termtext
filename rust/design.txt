@@ -1,0 +1,29 @@
+AIM:
+allow intuitive use (a lot like nano), while also having options for more advanced shortcuts (a bit of inspiration from vim)
+
+Important Features:
+- fast text manipulation
+- bottom line will have important keybindings listed
+
+Nice to Haves:
+- optimized modification saving, e.g. only save lines after the first modification
+- designate alternate save target
+
+Editor Modes:
+insert:
+    - default mode
+    - allows editing similar to nano
+replace:
+    - replaces characters, inserts new characters if at EOL
+selection:
+    - some key will mark start and end of selection
+    - other bindings can perfom bulk operations on selections
+        (non-exhaustive list)
+        - deletion
+        - case change
+        - replacement
+    - interface with text searching functionality ?
+    - non-contiguous selected regions ?
+
+ALL:
+    - arrow key navigation

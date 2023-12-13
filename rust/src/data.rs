@@ -5,7 +5,6 @@ pub struct FileMeta {
     pub path: String,
     pub histpath: String,
     pub last_modified: SystemTime,
-    pub escctrl: bool,
 } impl FileMeta {
     pub(crate) fn fmt_last_modified(&self) -> String {
         let last_modified: u64 = SystemTime::now().duration_since(self.last_modified).unwrap().as_secs();
@@ -124,5 +123,6 @@ pub(crate) struct Attrs {
     pub pref_x: u64,
     pub mov_restrict: _MoveRestrict,
     pub suppress_move_errs: bool,
+    pub escctrl: bool,
     pub display: _Display,
 }
