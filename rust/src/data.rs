@@ -5,6 +5,7 @@ pub struct FileMeta {
     pub path: String,
     pub histpath: String,
     pub last_modified: SystemTime,
+    pub escctrl: bool,
 } impl FileMeta {
     pub(crate) fn fmt_last_modified(&self) -> String {
         let last_modified: u64 = SystemTime::now().duration_since(self.last_modified).unwrap().as_secs();
@@ -111,7 +112,7 @@ pub(crate) struct _Display {
     pub redisplay: u64,
     pub tt_left_len: usize,
     pub bt_left_len: usize,
-} impl _Display {pub(crate) fn new()->Self{Self {msg:String::new(),lastmod:String::new(),redisplay:0,tt_left_len:0,bt_left_len:0}}}
+} impl _Display {pub(crate) fn new()->Self{Self {msg:"THIS IS A BUG, PLEASE CONTACT AUTHOR".to_owned(),lastmod:String::new(),redisplay:0,tt_left_len:0,bt_left_len:0}}}
 
 pub(crate) struct Attrs {
     /// rows cols

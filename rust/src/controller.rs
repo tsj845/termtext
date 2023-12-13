@@ -58,7 +58,7 @@ impl Controller {
     pub fn from_file(title: String, path: String) -> io::Result<Self> {
         let mut x = Self {
             list: LineList::from_iter(std::io::BufReader::new(File::open(&path).unwrap()).lines()),
-            meta: FileMeta { title, path: path.clone(), histpath: "".to_owned(), last_modified: std::fs::metadata(&path).unwrap().modified().unwrap() },
+            meta: FileMeta { title, path: path.clone(), histpath: "".to_owned(), last_modified: std::fs::metadata(&path).unwrap().modified().unwrap(), escctrl: false },
             activeline: 0,
             endflag: false,
             waserr: false,
@@ -70,6 +70,7 @@ impl Controller {
         // x.terminal.begin()?;
         x.attrs.display.lastmod = x.meta.fmt_last_modified();
         x.activeline = x.list.index(0);
+        x._reset_msg().unwrap();
         if debugging(5) {x.test_readback();x.terminal.term.read_key()?;}
         if debugging(7) {
             x.terminal.clear_screen();
@@ -145,6 +146,18 @@ impl Controller {
             }
         }
         if self.cflag(DArea::BotText) {
+            // if !self.cflag(DArea::BTMsg) {
+            //     self._reset_msg()?;
+            // }
+            // self.terminal.show_cursor();
+            self.terminal.set_cur_pos(self.attrs.size.0 - 2, 0);
+            // print!("{}", &console::pad_str("TEST MESSAGE", self.attrs.size.1 as usize, Alignment::Center, None));
+            print!("{}", &console::pad_str(&self.attrs.display.msg, self.attrs.size.1 as usize, Alignment::Center, None));
+            self.terminal.clear_to_newline();
+            self.terminal.reset_col();
+            // self.terminal.out.flush()?;
+            // read_input()?;
+            // self.terminal.hide_cursor();
             self.terminal.set_cur_row(self.attrs.size.0);
             if self.cflag(DArea::BTCuP) {
                 let lw = self.attrs.display.bt_left_len;
@@ -188,16 +201,31 @@ impl Controller {
                     if k.kind == KeyEventKind::Release {
                         continue 'outer;
                     }
-                    if k.modifiers.contains(KeyModifiers::CONTROL) {
+                    if k.modifiers.contains(KeyModifiers::CONTROL) || self.meta.escctrl {
+                        if self.meta.escctrl { // reset the prompt
+                            let x = self.attrs.display.redisplay;
+                            self.attrs.display.redisplay = 0;
+                            self._reset_msg()?;
+                            self.render_screen()?;
+                            self.attrs.display.redisplay = x;
+                        }
+                        self.meta.escctrl = false;
                         k.code = apply_key_ctrl(k.code)?;
                     } else if k.state.contains(KeyEventState::CAPS_LOCK) ^ k.modifiers.contains(KeyModifiers::SHIFT) {
                         k.code = apply_key_shift(k.code)?;
                     }
                     match (k.code, k.modifiers) {
+                        (KeyCode::Esc, _) => {
+                            self.meta.escctrl = true;
+                            self._msg("ESC CTRL")?;
+                            self.render_screen()?;
+                            continue 'outer;
+                        }
                         (KeyCode::Char(c), _) => {
                             if c == 17 as char {self.waserr=true;self.endreason="FORCE QUIT".to_owned();break 'outer;} // ^Q
                             if c == 24 as char {self.endreason="CONTROL X".to_owned();break 'outer;} // ^X
                             if c == 19 as char {self.save();continue 'outer;} // ^S
+                            if c == 21 as char {self._msg("MODE SWITCH NOT IMPLEMENTED YET")?;self.sflag(DArea::BTAll);self.render_screen()?;continue 'outer;} // ^U
                             if c == 20 as char { // ^T
                                 if debugging(8) {
                                     self.__dumpcontent()?;
@@ -217,9 +245,19 @@ impl Controller {
                                 continue 'outer;
                             }
                             if c == 4 as char { // ^D
+                                self._reset_msg()?;
+                                self.render_screen()?;
+                                continue 'outer;
+                            }
+                            if c == 23 as char { // ^W
                                 self.cflag(!0);
                                 self.sflag(DArea::BTAllE | DArea::BotText);
                                 self.attrs.display.bt_left_len = 0;
+                                self.render_screen()?;
+                                continue 'outer;
+                            }
+                            if (c as u8) < 32u8 {
+                                self._msg("INVALID CTRL SEQ")?;
                                 self.render_screen()?;
                                 continue 'outer;
                             }
@@ -317,6 +355,7 @@ impl Controller {
         self.attrs.frame_start.0 -= 1;
         self.cflag(DArea::EAAll);
         self.sflag(DArea::BTAll | DArea::TTAll);
+        // self.cflag(DArea::EAAll | DArea::BTMsg);
         self.terminal.scroll_down();
         self.terminal.clear_to_newline();
         self.activeline = Line::get_prev_a(self.activeline);
@@ -335,6 +374,7 @@ impl Controller {
         self.attrs.frame_start.0 += 1;
         self.cflag(DArea::EAAll); // ensure the edit area isn't redrawn after
         self.sflag(DArea::BTAll | DArea::TTAll); // redraw everything else
+        // self.cflag(DArea::EAAll | DArea::BTMsg);
         self.terminal.scroll_up();
         self.activeline = Line::get_next_a(self.activeline);
         let l = Line::len_a(self.activeline);
@@ -461,11 +501,14 @@ impl Controller {
 }
 
 impl Controller {
-    /// todo
     fn _msg(&mut self, msg: &str) -> BRes {
-        self.attrs.display.msg = msg.to_owned();
-        self.sflag(DArea::BTMsg);
+        self.attrs.display.msg = format!("[ {msg} ]");
+        self.sflag(DArea::BotText | DArea::BTMsg);
         return BOK;
+    }
+    #[inline(always)]
+    fn _reset_msg(&mut self) -> BRes {
+        self._msg("_")
     }
     fn __dumpcontent(&mut self) -> BRes {
         self.terminal.clear_screen();
